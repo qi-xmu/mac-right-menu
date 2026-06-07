@@ -1,0 +1,6 @@
+// Local code signing settings
+// Copy this file to Config/Local.xcconfig and fill in your values.
+// Config/Local.xcconfig is gitignored, so your personal settings stay local.
+
+DEVELOPMENT_TEAM = YOUR_TEAM_ID_HERE
+CODE_SIGN_STYLE = Automatic

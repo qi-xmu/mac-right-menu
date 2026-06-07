@@ -1,0 +1,10 @@
+[workspace]
+authors = ["qi-xmu <360141773@qq.com>"]
+channels = ["conda-forge"]
+name = "mac-right-menu"
+platforms = ["osx-arm64"]
+version = "0.1.0"
+
+[tasks]
+
+[dependencies]

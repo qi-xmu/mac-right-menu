@@ -1,0 +1,84 @@
+name: mac-right-menu
+options:
+  bundleIdPrefix: com.qi-xmu
+  deploymentTarget:
+    macOS: "26.0"
+  xcodeVersion: "16.0"
+  developmentLanguage: en
+  createIntermediateGroups: true
+  usesTabs: false
+  knownRegions:
+    - en
+    - zh-Hans
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    MACOSX_DEPLOYMENT_TARGET: "26.0"
+    ENABLE_HARDENED_RUNTIME: true
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: ""
+
+targets:
+  mac-right-menu:
+    type: application
+    platform: macOS
+    sources:
+      - path: mac-right-menu
+        type: group
+        createIntermediateGroups: true
+      - path: Shared
+        type: group
+        createIntermediateGroups: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.qi-xmu.mac-right-menu
+        INFOPLIST_FILE: mac-right-menu/Info.plist
+        CODE_SIGN_ENTITLEMENTS: mac-right-menu/mac-right-menu.entitlements
+        COMBINE_HIDPI_IMAGES: true
+    dependencies:
+      - target: FinderExtension
+        embed: true
+
+
+  FinderExtension:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: FinderExtension
+        type: group
+        createIntermediateGroups: true
+      - path: Shared
+        type: group
+        createIntermediateGroups: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.qi-xmu.mac-right-menu.FinderExtension
+        INFOPLIST_FILE: FinderExtension/Info.plist
+        CODE_SIGN_ENTITLEMENTS: FinderExtension/FinderExtension.entitlements
+        COMBINE_HIDPI_IMAGES: true
+        GENERATE_INFOPLIST_FILE: false
+        WRAPPER_EXTENSION: appex
+        APPLICATION_EXTENSION_API_ONLY: true
+        LD_RUNPATH_SEARCH_PATHS:
+          - "@executable_path/../Frameworks"
+          - "@executable_path/../../../../Frameworks"
+    dependencies:
+      - framework: FinderSync.framework
+        embed: false
+
+schemes:
+  mac-right-menu:
+    build:
+      targets:
+        mac-right-menu: all
+        FinderExtension: all
+    run:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release

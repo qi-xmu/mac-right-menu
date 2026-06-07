@@ -1,0 +1,609 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		3237E76B10AD05A83D9874CC /* ActionsSettingsTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79D69EBC70AADF2563A596E3 /* ActionsSettingsTab.swift */; };
+		3588A946E437161A77DB85CB /* mac_right_menuApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6763067652997C56891A197 /* mac_right_menuApp.swift */; };
+		3CADA174838B7825E0322020 /* ActionMenuItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE62B2AEB26ABD533E6BE6F5 /* ActionMenuItem.swift */; };
+		42AC784A6E8DB45CD1D43963 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = FF59226764AF1CFFDC561239 /* Localizable.xcstrings */; };
+		4ACC97BF92B731BA6579BA34 /* SharedUserDefaults.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40CE98C6FE58A80ADB8B26C5 /* SharedUserDefaults.swift */; };
+		4D7AC92E0205772785D0EE29 /* NewFileTemplate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9C495B11F638A04B8E3EFED /* NewFileTemplate.swift */; };
+		4D88EAF0DF9B98B2F7F40359 /* MenuConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2BF9DC882C191AA9A66BC1F /* MenuConfiguration.swift */; };
+		509C2E4BA5E686B51EA11748 /* ActionMenuItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE62B2AEB26ABD533E6BE6F5 /* ActionMenuItem.swift */; };
+		516920CA93096E07838CA285 /* AppMenuItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A61B788DDF2E3EAD81F4133 /* AppMenuItem.swift */; };
+		55237B827DC42929BB534AB9 /* Constants.swift in Sources */ = {isa = PBXBuildFile; fileRef = 108A6DB428B7D682BFE80908 /* Constants.swift */; };
+		5D47F2440E7DD71644A9E934 /* SharedUserDefaults.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40CE98C6FE58A80ADB8B26C5 /* SharedUserDefaults.swift */; };
+		6A9D31D9532EE14579A10D1C /* NewFileSettingsTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59CA55100CF81240021634FC /* NewFileSettingsTab.swift */; };
+		6B8B9AB7DA9F01452C2B4783 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = FF59226764AF1CFFDC561239 /* Localizable.xcstrings */; };
+		8274032C4E1DC02B573863A4 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDA173AFFD620244655EA215 /* AppState.swift */; };
+		82ACB851B2BC1CF189915121 /* NewFileTemplate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9C495B11F638A04B8E3EFED /* NewFileTemplate.swift */; };
+		9803AC52979C551481947554 /* AppMenuItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A61B788DDF2E3EAD81F4133 /* AppMenuItem.swift */; };
+		9C07ABF04254FBD3155727FB /* FinderSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD39CB04B25FC831003DBF3A /* FinderSync.swift */; };
+		A0C6F748EC529DDF15F851D1 /* MenuActionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CBECB73A36E2983BD394B54 /* MenuActionHandler.swift */; };
+		A90ABA38D57C95A8880B6118 /* GeneralSettingsTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = B046667D4B2820EA5E428CDD /* GeneralSettingsTab.swift */; };
+		A9D4693E26AF534902A7EC95 /* MenuItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69E67F8AC8310E0732AFDB94 /* MenuItem.swift */; };
+		ADAFC6CA85BEB78250DC40F3 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7CFB1776D4B9F302D8A8CC2 /* SettingsView.swift */; };
+		BAEBD582B5740CFC30BC6A90 /* Constants.swift in Sources */ = {isa = PBXBuildFile; fileRef = 108A6DB428B7D682BFE80908 /* Constants.swift */; };
+		C4BD5057D366864129111BA3 /* MenuConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2BF9DC882C191AA9A66BC1F /* MenuConfiguration.swift */; };
+		C65D9AE703AC530C70DBC4D2 /* FinderSync.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0B36F6B6DC5A4AAB90168799 /* FinderSync.framework */; };
+		C84BFEEEBD5C0D7530DE4142 /* SettingsSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD3E523433F161CA80195813 /* SettingsSync.swift */; };
+		CA91B5C0EEBB92FAB08B26EC /* AppsSettingsTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0D9421302623A30C0699F81 /* AppsSettingsTab.swift */; };
+		E59DEF89B90E406FDA763817 /* SettingsSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD3E523433F161CA80195813 /* SettingsSync.swift */; };
+		E945BC42E525987797674D68 /* MenuItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69E67F8AC8310E0732AFDB94 /* MenuItem.swift */; };
+		F808D8A0162B38B342851688 /* MenuBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA6A993709DD16B536FE0476 /* MenuBuilder.swift */; };
+		FD1B04F0D0770884AC89519F /* FinderExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 626C40FAC2601D59DC49C42E /* FinderExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		CEF98024F04DE2BF3240A53A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 55D7B000CB31532BFDFD868B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C2B3CA57B2A56ED1D4F7438B;
+			remoteInfo = FinderExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		DFC955933BD37B6CCEEDB94A /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				FD1B04F0D0770884AC89519F /* FinderExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		0B36F6B6DC5A4AAB90168799 /* FinderSync.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = FinderSync.framework; sourceTree = "<group>"; };
+		0CBECB73A36E2983BD394B54 /* MenuActionHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuActionHandler.swift; sourceTree = "<group>"; };
+		108A6DB428B7D682BFE80908 /* Constants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Constants.swift; sourceTree = "<group>"; };
+		255056C34CEA98661DC8EE7A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		3F3C1D1332A39A4FB6880E99 /* mac-right-menu.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "mac-right-menu.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		40CE98C6FE58A80ADB8B26C5 /* SharedUserDefaults.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedUserDefaults.swift; sourceTree = "<group>"; };
+		568C283306D87E86AA48AA17 /* mac-right-menu.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "mac-right-menu.entitlements"; sourceTree = "<group>"; };
+		59CA55100CF81240021634FC /* NewFileSettingsTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewFileSettingsTab.swift; sourceTree = "<group>"; };
+		626C40FAC2601D59DC49C42E /* FinderExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FinderExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		69E67F8AC8310E0732AFDB94 /* MenuItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuItem.swift; sourceTree = "<group>"; };
+		6A61B788DDF2E3EAD81F4133 /* AppMenuItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMenuItem.swift; sourceTree = "<group>"; };
+		79D69EBC70AADF2563A596E3 /* ActionsSettingsTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionsSettingsTab.swift; sourceTree = "<group>"; };
+		A3C2B33C43F556A0F45272B7 /* FinderExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FinderExtension.entitlements; sourceTree = "<group>"; };
+		A7CFB1776D4B9F302D8A8CC2 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		AE62B2AEB26ABD533E6BE6F5 /* ActionMenuItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionMenuItem.swift; sourceTree = "<group>"; };
+		B046667D4B2820EA5E428CDD /* GeneralSettingsTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneralSettingsTab.swift; sourceTree = "<group>"; };
+		B0D9421302623A30C0699F81 /* AppsSettingsTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppsSettingsTab.swift; sourceTree = "<group>"; };
+		B2BF9DC882C191AA9A66BC1F /* MenuConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuConfiguration.swift; sourceTree = "<group>"; };
+		B9C495B11F638A04B8E3EFED /* NewFileTemplate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewFileTemplate.swift; sourceTree = "<group>"; };
+		BA6A993709DD16B536FE0476 /* MenuBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBuilder.swift; sourceTree = "<group>"; };
+		C6CCD9C4A224EC909758C496 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		D6763067652997C56891A197 /* mac_right_menuApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = mac_right_menuApp.swift; sourceTree = "<group>"; };
+		DD39CB04B25FC831003DBF3A /* FinderSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderSync.swift; sourceTree = "<group>"; };
+		FD3E523433F161CA80195813 /* SettingsSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsSync.swift; sourceTree = "<group>"; };
+		FDA173AFFD620244655EA215 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		FF59226764AF1CFFDC561239 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		CADEE477DFAEE4CC0F884399 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C65D9AE703AC530C70DBC4D2 /* FinderSync.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		17DA7D9692640271D88B96AE /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				FDA173AFFD620244655EA215 /* AppState.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		195A62DEB811BE724675D0DB = {
+			isa = PBXGroup;
+			children = (
+				6F009F741F0C6A8EA2659F72 /* FinderExtension */,
+				9C1200042D0DCCE5757CCA83 /* mac-right-menu */,
+				5C69AF07D27DB0A66CB451D4 /* Shared */,
+				34848A1CC07963451814E5DB /* Frameworks */,
+				C88E932ABD266B3527610F69 /* Products */,
+			);
+			sourceTree = "<group>";
+			usesTabs = 0;
+		};
+		2E1D068477692B9CE04BAFC1 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				79D69EBC70AADF2563A596E3 /* ActionsSettingsTab.swift */,
+				B0D9421302623A30C0699F81 /* AppsSettingsTab.swift */,
+				B046667D4B2820EA5E428CDD /* GeneralSettingsTab.swift */,
+				59CA55100CF81240021634FC /* NewFileSettingsTab.swift */,
+				A7CFB1776D4B9F302D8A8CC2 /* SettingsView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		34848A1CC07963451814E5DB /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				0B36F6B6DC5A4AAB90168799 /* FinderSync.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		3891F364B0653E2749B28F92 /* Preferences */ = {
+			isa = PBXGroup;
+			children = (
+				B2BF9DC882C191AA9A66BC1F /* MenuConfiguration.swift */,
+				40CE98C6FE58A80ADB8B26C5 /* SharedUserDefaults.swift */,
+			);
+			path = Preferences;
+			sourceTree = "<group>";
+		};
+		5C69AF07D27DB0A66CB451D4 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				108A6DB428B7D682BFE80908 /* Constants.swift */,
+				FF59226764AF1CFFDC561239 /* Localizable.xcstrings */,
+				967A37FF7D9F4C6E348908AE /* IPC */,
+				E071B965571E2ABBDB3F82C0 /* Models */,
+				3891F364B0653E2749B28F92 /* Preferences */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		6F009F741F0C6A8EA2659F72 /* FinderExtension */ = {
+			isa = PBXGroup;
+			children = (
+				A3C2B33C43F556A0F45272B7 /* FinderExtension.entitlements */,
+				DD39CB04B25FC831003DBF3A /* FinderSync.swift */,
+				255056C34CEA98661DC8EE7A /* Info.plist */,
+				0CBECB73A36E2983BD394B54 /* MenuActionHandler.swift */,
+				BA6A993709DD16B536FE0476 /* MenuBuilder.swift */,
+			);
+			path = FinderExtension;
+			sourceTree = "<group>";
+		};
+		967A37FF7D9F4C6E348908AE /* IPC */ = {
+			isa = PBXGroup;
+			children = (
+				FD3E523433F161CA80195813 /* SettingsSync.swift */,
+			);
+			path = IPC;
+			sourceTree = "<group>";
+		};
+		9C1200042D0DCCE5757CCA83 /* mac-right-menu */ = {
+			isa = PBXGroup;
+			children = (
+				C6CCD9C4A224EC909758C496 /* Info.plist */,
+				D6763067652997C56891A197 /* mac_right_menuApp.swift */,
+				568C283306D87E86AA48AA17 /* mac-right-menu.entitlements */,
+				17DA7D9692640271D88B96AE /* ViewModels */,
+				2E1D068477692B9CE04BAFC1 /* Views */,
+			);
+			path = "mac-right-menu";
+			sourceTree = "<group>";
+		};
+		C88E932ABD266B3527610F69 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				626C40FAC2601D59DC49C42E /* FinderExtension.appex */,
+				3F3C1D1332A39A4FB6880E99 /* mac-right-menu.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		E071B965571E2ABBDB3F82C0 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				AE62B2AEB26ABD533E6BE6F5 /* ActionMenuItem.swift */,
+				6A61B788DDF2E3EAD81F4133 /* AppMenuItem.swift */,
+				69E67F8AC8310E0732AFDB94 /* MenuItem.swift */,
+				B9C495B11F638A04B8E3EFED /* NewFileTemplate.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		AE76FEC35FC41058887332CA /* mac-right-menu */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F0C3F1A193C94B3CC72AD835 /* Build configuration list for PBXNativeTarget "mac-right-menu" */;
+			buildPhases = (
+				1FFAB6C92A94B90EFC0F649E /* Sources */,
+				9DACBB9D061A1EF2CF59228F /* Resources */,
+				DFC955933BD37B6CCEEDB94A /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				DD9B22B0BA32F807196C332C /* PBXTargetDependency */,
+			);
+			name = "mac-right-menu";
+			packageProductDependencies = (
+			);
+			productName = "mac-right-menu";
+			productReference = 3F3C1D1332A39A4FB6880E99 /* mac-right-menu.app */;
+			productType = "com.apple.product-type.application";
+		};
+		C2B3CA57B2A56ED1D4F7438B /* FinderExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1D56583233621C20E322CA23 /* Build configuration list for PBXNativeTarget "FinderExtension" */;
+			buildPhases = (
+				888EA0E03CB9EB182F836832 /* Sources */,
+				FECDC2E4317AF536D6A0DFA2 /* Resources */,
+				CADEE477DFAEE4CC0F884399 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = FinderExtension;
+			packageProductDependencies = (
+			);
+			productName = FinderExtension;
+			productReference = 626C40FAC2601D59DC49C42E /* FinderExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		55D7B000CB31532BFDFD868B /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					AE76FEC35FC41058887332CA = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+					C2B3CA57B2A56ED1D4F7438B = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 9CE2C175E1C543C9159172AA /* Build configuration list for PBXProject "mac-right-menu" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+				"zh-Hans",
+			);
+			mainGroup = 195A62DEB811BE724675D0DB;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = C88E932ABD266B3527610F69 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				C2B3CA57B2A56ED1D4F7438B /* FinderExtension */,
+				AE76FEC35FC41058887332CA /* mac-right-menu */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		9DACBB9D061A1EF2CF59228F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6B8B9AB7DA9F01452C2B4783 /* Localizable.xcstrings in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FECDC2E4317AF536D6A0DFA2 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				42AC784A6E8DB45CD1D43963 /* Localizable.xcstrings in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		1FFAB6C92A94B90EFC0F649E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				509C2E4BA5E686B51EA11748 /* ActionMenuItem.swift in Sources */,
+				3237E76B10AD05A83D9874CC /* ActionsSettingsTab.swift in Sources */,
+				9803AC52979C551481947554 /* AppMenuItem.swift in Sources */,
+				8274032C4E1DC02B573863A4 /* AppState.swift in Sources */,
+				CA91B5C0EEBB92FAB08B26EC /* AppsSettingsTab.swift in Sources */,
+				BAEBD582B5740CFC30BC6A90 /* Constants.swift in Sources */,
+				A90ABA38D57C95A8880B6118 /* GeneralSettingsTab.swift in Sources */,
+				C4BD5057D366864129111BA3 /* MenuConfiguration.swift in Sources */,
+				A9D4693E26AF534902A7EC95 /* MenuItem.swift in Sources */,
+				6A9D31D9532EE14579A10D1C /* NewFileSettingsTab.swift in Sources */,
+				82ACB851B2BC1CF189915121 /* NewFileTemplate.swift in Sources */,
+				C84BFEEEBD5C0D7530DE4142 /* SettingsSync.swift in Sources */,
+				ADAFC6CA85BEB78250DC40F3 /* SettingsView.swift in Sources */,
+				5D47F2440E7DD71644A9E934 /* SharedUserDefaults.swift in Sources */,
+				3588A946E437161A77DB85CB /* mac_right_menuApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		888EA0E03CB9EB182F836832 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3CADA174838B7825E0322020 /* ActionMenuItem.swift in Sources */,
+				516920CA93096E07838CA285 /* AppMenuItem.swift in Sources */,
+				55237B827DC42929BB534AB9 /* Constants.swift in Sources */,
+				9C07ABF04254FBD3155727FB /* FinderSync.swift in Sources */,
+				A0C6F748EC529DDF15F851D1 /* MenuActionHandler.swift in Sources */,
+				F808D8A0162B38B342851688 /* MenuBuilder.swift in Sources */,
+				4D88EAF0DF9B98B2F7F40359 /* MenuConfiguration.swift in Sources */,
+				E945BC42E525987797674D68 /* MenuItem.swift in Sources */,
+				4D7AC92E0205772785D0EE29 /* NewFileTemplate.swift in Sources */,
+				E59DEF89B90E406FDA763817 /* SettingsSync.swift in Sources */,
+				4ACC97BF92B731BA6579BA34 /* SharedUserDefaults.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		DD9B22B0BA32F807196C332C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = C2B3CA57B2A56ED1D4F7438B /* FinderExtension */;
+			targetProxy = CEF98024F04DE2BF3240A53A /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		11A86CE90AB3FC2B9B2DAC55 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = FinderExtension/FinderExtension.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\".\"",
+				);
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = FinderExtension/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.qi-xmu.mac-right-menu.FinderExtension";
+				SDKROOT = macosx;
+				WRAPPER_EXTENSION = appex;
+			};
+			name = Release;
+		};
+		76AB78CCBE33B0F226B2FCE4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		7AD09680BC86A88159499F22 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		B40A27FA023C6264F1AE9E50 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = FinderExtension/FinderExtension.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\".\"",
+				);
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = FinderExtension/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.qi-xmu.mac-right-menu.FinderExtension";
+				SDKROOT = macosx;
+				WRAPPER_EXTENSION = appex;
+			};
+			name = Debug;
+		};
+		BA7E9D11D448C3EF9FF6FBAC /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "mac-right-menu/mac-right-menu.entitlements";
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = "mac-right-menu/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.qi-xmu.mac-right-menu";
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		BB832E143E6FC6FB105FB068 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "mac-right-menu/mac-right-menu.entitlements";
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = "mac-right-menu/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.qi-xmu.mac-right-menu";
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		1D56583233621C20E322CA23 /* Build configuration list for PBXNativeTarget "FinderExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B40A27FA023C6264F1AE9E50 /* Debug */,
+				11A86CE90AB3FC2B9B2DAC55 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		9CE2C175E1C543C9159172AA /* Build configuration list for PBXProject "mac-right-menu" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				76AB78CCBE33B0F226B2FCE4 /* Debug */,
+				7AD09680BC86A88159499F22 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		F0C3F1A193C94B3CC72AD835 /* Build configuration list for PBXNativeTarget "mac-right-menu" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BA7E9D11D448C3EF9FF6FBAC /* Debug */,
+				BB832E143E6FC6FB105FB068 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 55D7B000CB31532BFDFD868B /* Project object */;
+}
