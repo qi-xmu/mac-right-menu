@@ -64,6 +64,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		09C454FE740FD78676D15D53 /* Local.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Local.xcconfig; sourceTree = "<group>"; };
 		0B36F6B6DC5A4AAB90168799 /* FinderSync.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = FinderSync.framework; sourceTree = "<group>"; };
 		0CBECB73A36E2983BD394B54 /* MenuActionHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuActionHandler.swift; sourceTree = "<group>"; };
 		108A6DB428B7D682BFE80908 /* Constants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Constants.swift; sourceTree = "<group>"; };
@@ -115,6 +116,7 @@
 		195A62DEB811BE724675D0DB = {
 			isa = PBXGroup;
 			children = (
+				81AE51DFE65D8391FBF74E7D /* Config */,
 				6F009F741F0C6A8EA2659F72 /* FinderExtension */,
 				9C1200042D0DCCE5757CCA83 /* mac-right-menu */,
 				5C69AF07D27DB0A66CB451D4 /* Shared */,
@@ -175,6 +177,14 @@
 				BA6A993709DD16B536FE0476 /* MenuBuilder.swift */,
 			);
 			path = FinderExtension;
+			sourceTree = "<group>";
+		};
+		81AE51DFE65D8391FBF74E7D /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				09C454FE740FD78676D15D53 /* Local.xcconfig */,
+			);
+			path = Config;
 			sourceTree = "<group>";
 		};
 		967A37FF7D9F4C6E348908AE /* IPC */ = {
@@ -269,11 +279,11 @@
 				LastUpgradeCheck = 1600;
 				TargetAttributes = {
 					AE76FEC35FC41058887332CA = {
-						DevelopmentTeam = "";
+						DevelopmentTeam = 9H9AXS5ZLL;
 						ProvisioningStyle = Automatic;
 					};
 					C2B3CA57B2A56ED1D4F7438B = {
-						DevelopmentTeam = "";
+						DevelopmentTeam = 9H9AXS5ZLL;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -394,6 +404,7 @@
 		};
 		76AB78CCBE33B0F226B2FCE4 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 09C454FE740FD78676D15D53 /* Local.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -425,10 +436,8 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -461,6 +470,7 @@
 		};
 		7AD09680BC86A88159499F22 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 09C454FE740FD78676D15D53 /* Local.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -492,10 +502,8 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
