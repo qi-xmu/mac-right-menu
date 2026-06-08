@@ -253,23 +253,6 @@
         }
       }
     },
-    "Copy Absolute Path" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Copy Absolute Path"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "复制绝对路径"
-          }
-        }
-      }
-    },
     "Copy File Name" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -282,7 +265,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "复制文件名"
+            "value" : "拷贝文件名"
           }
         }
       }
@@ -316,7 +299,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "复制路径"
+            "value" : "拷贝路径"
           }
         }
       }
@@ -372,8 +355,23 @@
         }
       }
     },
+    "Enable Command Execution" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable Command Execution"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "启用指令执行"
+          }
+        }
+      }
+    },
     "Enable Finder Context Menu" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -454,7 +452,25 @@
         }
       }
     },
+    "Inactive" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inactive"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未激活"
+          }
+        }
+      }
+    },
     "mac-right-menu" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -757,6 +773,23 @@
         }
       }
     },
+    "Restart Finder" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restart Finder"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重启 Finder"
+          }
+        }
+      }
+    },
     "Show or hide files in Finder" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -837,6 +870,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "切换哪些操作显示在右键菜单中。"
+          }
+        }
+      }
+    },
+    "When disabled, commands are logged but not executed." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "When disabled, commands are logged but not executed."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关闭时指令仅记录日志，不实际执行。"
           }
         }
       }

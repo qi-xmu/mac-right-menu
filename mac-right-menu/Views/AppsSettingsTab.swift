@@ -52,7 +52,7 @@ struct AppsSettingsTab: View {
                                             appState.configuration.appItems[index].isEnabled = newValue
                                             appState.saveConfiguration()
                                         }
-                                    ))
+                                    )).toggleStyle(.switch)
                                 }
                                 .padding(.vertical, 2)
                             }

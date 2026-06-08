@@ -8,3 +8,4 @@
 
 # Local signing configuration
 Config/Local.xcconfig
+.DS_Store

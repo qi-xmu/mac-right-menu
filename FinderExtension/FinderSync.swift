@@ -6,28 +6,42 @@ private let logger = Logger(subsystem: Constants.extensionBundleID, category: "f
 
 class FinderSyncExtension: FIFinderSync {
 
+    var xpcConnection: NSXPCConnection?
+    var remoteProxy: ContainerXPCProtocol? {
+        xpcConnection?.remoteObjectProxyWithErrorHandler { error in
+            logger.error("XPC error: \(error.localizedDescription)")
+        } as? ContainerXPCProtocol
+    }
+
     // MARK: - Initialization
 
     override init() {
         super.init()
-        logger.notice("FinderSync initialized from \(Bundle.main.bundlePath, privacy: .public)")
+        logger.notice("FinderSync initialized")
 
-        // Show menu across the entire filesystem
         FIFinderSyncController.default().directoryURLs = [URL(fileURLWithPath: "/")]
+        connectToContainer()
+    }
 
-        // Observe settings changes from Container App
-        SettingsSync.observeSettingsChanged {
-            logger.notice("Settings changed, will rebuild menu on next call")
+    // MARK: - XPC Connection
+
+    private func connectToContainer() {
+        let conn = NSXPCConnection(machServiceName: "com.qi-xmu.mac-right-menu.command")
+        conn.remoteObjectInterface = NSXPCInterface(with: ContainerXPCProtocol.self)
+        conn.exportedInterface = NSXPCInterface(with: ExtensionXPCProtocol.self)
+        conn.exportedObject = self
+        conn.invalidationHandler = { [weak self] in
+            logger.warning("XPC connection to Container lost")
+            self?.xpcConnection = nil
         }
+        conn.resume()
+        xpcConnection = conn
     }
 
     // MARK: - Menu
 
     override func menu(for menuKind: FIMenuKind) -> NSMenu {
-        // Only show custom menu for file/folder right-click
-        guard menuKind == .contextualMenuForItems else {
-            return NSMenu()
-        }
+        guard menuKind == .contextualMenuForItems else { return NSMenu() }
 
         let config = SharedUserDefaults.menuConfiguration
         guard config.isEnabled else { return NSMenu() }
@@ -46,14 +60,27 @@ class FinderSyncExtension: FIFinderSync {
 
     // MARK: - Action
 
-    /// Single entry point for all menu item clicks.
-    /// Tag-based dispatch to MenuActionHandler.
     @objc func handleMenuAction(_ sender: NSMenuItem) {
         guard let targetURL = FIFinderSyncController.default().targetedURL() else {
             logger.warning("No target URL available")
             return
         }
         let selectedURLs = FIFinderSyncController.default().selectedItemURLs() ?? []
-        MenuActionHandler.handleMenuAction(sender, targetURL: targetURL, selectedURLs: selectedURLs)
+        MenuActionHandler.handleMenuAction(sender, targetURL: targetURL, selectedURLs: selectedURLs, proxy: remoteProxy)
+    }
+}
+
+// MARK: - ExtensionXPCProtocol
+
+extension FinderSyncExtension: ExtensionXPCProtocol {
+    func settingsDidChange() {
+        logger.notice("Container notified settings changed")
+    }
+
+    func shutdownImminent() {
+        logger.notice("Container shutting down — Extension going dormant")
+        FIFinderSyncController.default().directoryURLs = []
+        xpcConnection?.invalidate()
+        xpcConnection = nil
     }
 }

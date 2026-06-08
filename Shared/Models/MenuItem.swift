@@ -11,19 +11,17 @@ public protocol MenuItem: Codable, Identifiable, Equatable {
 
 /// The type of action an ActionMenuItem performs
 public enum ActionType: String, Codable, CaseIterable {
+    case newFile
     case copyPath
     case copyFileName
-    case newFile
-    case moveToTrash
     case toggleHidden
     case openParent
 
     public var displayTitle: String {
         switch self {
-        case .copyPath: return String(localized: "Copy Absolute Path")
+        case .copyPath: return String(localized: "Copy Path")
         case .copyFileName: return String(localized: "Copy File Name")
         case .newFile: return String(localized: "New File")
-        case .moveToTrash: return String(localized: "Move to Trash")
         case .toggleHidden: return String(localized: "Toggle Hidden")
         case .openParent: return String(localized: "Open Parent Directory")
         }
@@ -34,7 +32,6 @@ public enum ActionType: String, Codable, CaseIterable {
         case .copyPath: return "document.on.clipboard"
         case .copyFileName: return "text.cursor"
         case .newFile: return "doc.badge.plus"
-        case .moveToTrash: return "trash"
         case .toggleHidden: return "eye.slash"
         case .openParent: return "arrow.up.doc"
         }

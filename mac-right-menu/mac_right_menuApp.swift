@@ -2,20 +2,18 @@ import SwiftUI
 
 // MARK: - AppDelegate
 
-/// Handles macOS reopen event and manages the settings window lifecycle.
 class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldHandleReopen(
         _ sender: NSApplication,
         hasVisibleWindows flag: Bool
     ) -> Bool {
-        if !flag {
-            openSettings()
-        }
+        if !flag { openSettings() }
         return true
     }
 
     @MainActor func openSettings() {
         if let window = NSApp.windows.first(where: { $0.title.contains("mac-right-menu") }) {
+            NSApp.activate(ignoringOtherApps: true)
             window.makeKeyAndOrderFront(self)
         } else {
             NotificationCenter.default.post(name: .openSettingsWindow, object: nil)
@@ -40,6 +38,7 @@ struct MacRightMenuApp: App {
     var body: some Scene {
         MenuBarExtra {
             Button("Open Settings...") {
+                NSApp.activate(ignoringOtherApps: true)
                 if let window = NSApp.windows.first(where: { $0.title.contains("mac-right-menu") }) {
                     window.makeKeyAndOrderFront(self)
                 } else {
@@ -49,18 +48,25 @@ struct MacRightMenuApp: App {
             .keyboardShortcut(",")
             Divider()
             Button("Quit") {
-                NSApplication.shared.terminate(nil)
+                appState.shutdownExtensions()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    NSApplication.shared.terminate(nil)
+                }
             }
             .keyboardShortcut("q")
         } label: {
             Image(systemName: "menubar.dock.rectangle")
-            Text("mac-right-menu")
         }
 
         Window("mac-right-menu Settings", id: "settings") {
             SettingsView()
                 .environmentObject(appState)
-                .frame(minWidth: 500, minHeight: 400)
+                .frame(
+                    minWidth: 500,
+                    maxWidth: 500,
+                    minHeight: 365,
+                    maxHeight: 600
+                )
         }
         .windowResizability(.contentSize)
         .commands {

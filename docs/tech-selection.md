@@ -56,9 +56,10 @@ mac-right-menu.app
 
 | 方案 | 复杂度 | 延迟 | 推荐 |
 |------|--------|------|------|
-| `NSXPCConnection` | 高 | 低 | ⭐ 主推 |
-| Darwin Notification Center | 低 | 中 | 简单通知场景 |
-| Local Socket/文件 | 中 | 低 | 不推荐 |
+| Darwin Notification Center + App Group UserDefaults | 低 | 中 | ⭐ 选用 |
+| `NSXPCConnection` | 高 | 低 | 备选 |
+
+最终选择 DNC + UserDefaults，与 settings sync 同模式，无需引入额外 XPC 服务。
 
 ### Extension → 外部命令/服务
 
@@ -85,24 +86,25 @@ mac-right-menu.app
 - Extension bundle ID: `com.example.mac-right-menu.FinderExtension`（自动附加）
 - 分发: 开发者 ID + 公测，或 Mac App Store
 
-### 必要 Entitlements
+### 最终 Entitlements（策略 C：IPC 转发）
 
 ```xml
-<!-- Container App -->
-com.apple.security.app-sandbox: YES
-com.apple.security.files.user-selected.read-write  <!-- 读/写用户选中的文件 -->
+<!-- Container App（无沙盒） -->
+com.apple.security.application-groups: YES
 
-<!-- Finder Extension -->
+<!-- Finder Extension（最简化沙盒） -->
 com.apple.security.app-sandbox: YES
 com.apple.security.finder.sync: YES
-com.apple.security.files.user-selected.read-write
+com.apple.security.application-groups: YES
 ```
+
+Container App 无沙盒，所有文件操作通过 IPC 转发到 Container App 执行，彻底规避沙盒限制。
 
 ## 风险与缓解
 
 | 风险 | 缓解 |
 |------|------|
 | Apple 可能最终弃用 FinderSync | 文档中说已弃用但从未给出替代方案，持续关注 WWDC |
-| 沙箱限制导致某些功能受限 | 使用 Security-Scoped Bookmarks，或请求临时例外 |
+| 沙箱限制导致某些功能受限 | 策略 C：Extension 仅展示菜单，所有文件操作通过 IPC 转发到无沙盒的 Container App 执行 |
 | MDM 策略阻止 Extension 加载 | 提示用户：联系 IT 管理员 |
 | 调试困难（XPC 进程） | 使用 `os_log` + Console.app + `lldb -n finder-sync` |

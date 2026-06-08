@@ -11,6 +11,11 @@ public struct AppMenuItem: MenuItem, @unchecked Sendable {
     public var displayName: String
     public var arguments: [String]
     public var environment: [String: String]
+    public var iconData: Data?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, title, iconName, isEnabled, appURL, displayName, arguments, environment, iconData
+    }
 
     public init(appURL: URL, isEnabled: Bool = true, arguments: [String] = [], environment: [String: String] = [:]) {
         self.id = appURL.path
@@ -22,10 +27,16 @@ public struct AppMenuItem: MenuItem, @unchecked Sendable {
         self.isEnabled = isEnabled
         self.arguments = arguments
         self.environment = environment
+        // Cache icon data so Extension doesn't need to read app bundle
+        let icon = NSWorkspace.shared.icon(forFile: appURL.path)
+        self.iconData = icon.tiffRepresentation
     }
 
     public var icon: NSImage {
-        NSWorkspace.shared.icon(forFile: appURL.path)
+        if let data = iconData, let img = NSImage(data: data) {
+            return img
+        }
+        return NSImage(systemSymbolName: "app.fill", accessibilityDescription: nil) ?? NSImage()
     }
 
     public static func == (lhs: AppMenuItem, rhs: AppMenuItem) -> Bool {

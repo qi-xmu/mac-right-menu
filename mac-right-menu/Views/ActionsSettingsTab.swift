@@ -45,10 +45,9 @@ struct ActionsSettingsTab: View {
                         .font(.headline)
 
                     VStack(alignment: .leading, spacing: 8) {
+                        actionInfoRow(icon: "doc.badge.plus", title: "New File", description: "Create a new file from templates")
                         actionInfoRow(icon: "doc.on.clipboard", title: "Copy Path", description: "Copy the full file path to clipboard")
                         actionInfoRow(icon: "doc.on.clipboard", title: "Copy File Name", description: "Copy only the file name to clipboard")
-                        actionInfoRow(icon: "doc.badge.plus", title: "New File", description: "Create a new file from templates")
-                        actionInfoRow(icon: "trash", title: "Move to Trash", description: "Move selected files to Trash")
                         actionInfoRow(icon: "eye.slash", title: "Toggle Hidden", description: "Show or hide files in Finder")
                         actionInfoRow(icon: "arrow.up.doc", title: "Open Parent Folder", description: "Open the parent directory in Finder")
                     }

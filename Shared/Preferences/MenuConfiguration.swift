@@ -34,10 +34,9 @@ extension MenuConfiguration {
 
 extension ActionMenuItem {
     public static let defaults: [ActionMenuItem] = [
+        ActionMenuItem(actionType: .newFile, isEnabled: true),
         ActionMenuItem(actionType: .copyPath, isEnabled: true),
         ActionMenuItem(actionType: .copyFileName, isEnabled: true),
-        ActionMenuItem(actionType: .newFile, isEnabled: true),
-        ActionMenuItem(actionType: .moveToTrash, isEnabled: true),
         ActionMenuItem(actionType: .toggleHidden, isEnabled: true),
         ActionMenuItem(actionType: .openParent, isEnabled: true),
     ]
