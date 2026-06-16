@@ -1,5 +1,26 @@
 import Foundation
 
+/// System-level registration state derived from `pluginkit -m` output.
+///
+/// `pluginkit -m -p com.apple.FinderSync` lists one matching plugin per line;
+/// each line begins with a flag indicating the user's election state
+/// (`pluginkit` man page):
+///
+///   `+` elected to use            → `.enabled`
+///   `!` elected to use (debugger) → `.enabled`  (active; "for debugger use")
+///   `-` elected to ignore         → `.disabled`
+///   `=` superseded                → `.disabled`
+///   (line absent)                 → `.notInstalled`
+///
+/// The `-`/`!`/`=` cases all mean "present in pluginkit but not active", so they
+/// share the same remediation (enable in System Settings) and collapse into a
+/// single `.disabled` state.
+public enum RegistrationStatus: String, Codable {
+    case enabled
+    case disabled
+    case notInstalled
+}
+
 /// Represents a Finder Sync Extension with its runtime state and user preferences.
 public struct ExtensionInfo: Identifiable, Codable {
     public var id: String { bundleID }
@@ -11,7 +32,12 @@ public struct ExtensionInfo: Identifiable, Codable {
     public let displayName: String
 
     /// System-level registration state (pluginkit). Set by the Container.
-    public var isRegistered: Bool = false
+    public var registrationStatus: RegistrationStatus = .notInstalled
+
+    /// Convenience: true when the extension is known to pluginkit in any state
+    /// (enabled, disabled, superseded...). Used by `autoLaunchExtensions()` to
+    /// decide whether a launch attempt is worthwhile.
+    public var isRegistered: Bool { registrationStatus != .notInstalled }
 
     /// RPC connection state (heartbeat). Set by the Container.
     public var isConnected: Bool = false

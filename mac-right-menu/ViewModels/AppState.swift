@@ -17,7 +17,21 @@ class AppState: ObservableObject {
     /// In-memory record of every command execution (newest appended at the end).
     /// Cleared on relaunch; capped at `maxLogEntries`.
     @Published private(set) var executionLog: [ExecutionLogEntry] = []
-    private let maxLogEntries = 500
+    private let maxLogEntries = 100
+
+    /// In-memory record of every RPC exchange and wake/lifecycle event the
+    /// Container observes, surfaced in the Debug Log window. Cleared on relaunch;
+    /// capped at `maxDebugEntries`. Heartbeats are folded into single entries by
+    /// `appendDebugActivity` so 1s-interval ping/pong don't fill the cap.
+    @Published private(set) var debugLog: [DebugLogEntry] = []
+    private let maxDebugEntries = 100
+
+    /// Pending delayed Con→Ext wake. On heartbeat-timeout we don't immediately
+    /// `pluginkit -e use`; we schedule it `extWakeDelay` seconds out. If the
+    /// Extension reconnects within that window (`onHeartbeat`), the wake is
+    /// cancelled — avoiding spurious launches on transient Ext hiccups.
+    private var pendingExtWake: DispatchWorkItem?
+    private static let extWakeDelay: TimeInterval = 1
 
     /// File descriptor for the flock()-based single-instance guard.
     /// Kept open for the process lifetime; closing it releases the lock.
@@ -44,6 +58,43 @@ class AppState: ObservableObject {
                     self.extensions[index].connectedVersion = version
                     self.extensions[index].lastHeartbeatAt = Date()
                 }
+                // Ext is alive — cancel any pending delayed wake.
+                if let pw = self.pendingExtWake {
+                    pw.cancel()
+                    self.pendingExtWake = nil
+                    self.appendDebugEntry(.init(category: .lifecycle, method: "wake",
+                                                summary: "Ext reconnected — pending wake cancelled"))
+                }
+            },
+            onDisconnected: { [weak self] in
+                guard let self else { return }
+                if let index = self.extensions.firstIndex(where: { $0.bundleID == Constants.extensionBundleID }) {
+                    self.extensions[index].isConnected = false
+                    self.extensions[index].connectedPID = nil
+                    self.extensions[index].connectedVersion = nil
+                    logger.warning("[Con] Extension disconnected — heartbeat timeout")
+                    if self.extensions[index].autoLaunch {
+                        logger.notice("[Con] Delayed auto-launch of Extension (3s)")
+                        self.appendDebugEntry(.init(category: .lifecycle, method: "wake",
+                                                    summary: "Heartbeat timeout — scheduling delayed Ext wake (\(Self.extWakeDelay)s)"))
+                        // Cancel any previously scheduled wake, then schedule one
+                        // `extWakeDelay` seconds out. If Ext reconnects before the
+                        // timer fires, `onHeartbeat` cancels it.
+                        self.pendingExtWake?.cancel()
+                        let work = DispatchWorkItem { [weak self] in
+                            guard let self else { return }
+                            self.pendingExtWake = nil
+                            self.launchExtension(bundleID: Constants.extensionBundleID)
+                        }
+                        self.pendingExtWake = work
+                        DispatchQueue.main.asyncAfter(deadline: .now() + Self.extWakeDelay, execute: work)
+                    }
+                }
+            },
+            onActivity: { [weak self] activity in
+                // RPCServer emits from background queues; hop to the main actor
+                // to append (and heartbeat-fold) into `debugLog`.
+                Task { @MainActor in self?.appendDebugActivity(activity) }
             }
         )
         server.start()
@@ -74,8 +125,13 @@ class AppState: ObservableObject {
         loadExtensions()
         writeLockFile()
         _ = rpcServer
+        // Registration check is async; it kicks off auto-launch once the
+        // pluginkit status is known (see `checkExtensionRegistration`).
+        // We must NOT call `autoLaunchExtensions()` here directly: at this
+        // point every extension's `registrationStatus` is still the default
+        // `.notInstalled`, so `isRegistered` is false and the launch filter
+        // would drop everything.
         checkExtensionRegistration()
-        autoLaunchExtensions()
     }
 
     // MARK: - Extension Management
@@ -92,34 +148,43 @@ class AppState: ObservableObject {
     }
 
     /// Auto-launch extensions that have autoLaunch enabled.
+    /// Skips extensions that are already connected — `pluginkit -e use` is
+    /// idempotent, but there's no point re-electing a plugin whose host is
+    /// already running and heartbeating.
     private func autoLaunchExtensions() {
-        let toLaunch = extensions.filter { $0.autoLaunch && $0.isRegistered }
+        let toLaunch = extensions.filter { $0.autoLaunch && $0.isRegistered && !$0.isConnected }
         guard !toLaunch.isEmpty else { return }
         for ext in toLaunch {
             logger.notice("[Con] Auto-launching extension: \(ext.displayName, privacy: .public)")
+            appendDebugEntry(.init(category: .wake, method: "pluginkit",
+                                   summary: "Auto-launch: \(ext.displayName)"))
             launchExtension(bundleID: ext.bundleID)
         }
     }
 
-    /// Launch an extension by bundleID using NSWorkspace or open -b fallback.
+    /// Wake/launch a Finder Sync extension by bundleID.
+    ///
+    /// FinderSync extensions are `.appex` bundles hosted by the system's plugin
+    /// daemon (pkd), NOT LaunchServices applications — so `NSWorkspace.open` /
+    /// `open -b` cannot start them (`LSCopyApplicationURLsForBundleIdentifier`
+    /// fails for appex bundle ids). The correct wake mechanism is
+    /// `pluginkit -e use -i <bundleID>`, which elects the plug-in for use and
+    /// lets the plugin host load it (verified: extension starts and connects).
+    /// Used both at Container startup (`autoLaunchExtensions`) and after a
+    /// heartbeat-timeout disconnect (`onDisconnected`).
     private func launchExtension(bundleID: String) {
-        if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
-            let config = NSWorkspace.OpenConfiguration()
-            config.activates = false
-            NSWorkspace.shared.openApplication(at: appURL, configuration: config) { _, error in
-                if let error {
-                    logger.error("[Con] Extension launch failed: \(error.localizedDescription, privacy: .public)")
-                }
-            }
-            return
-        }
         let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-        task.arguments = ["-b", bundleID, "--background"]
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/pluginkit")
+        task.arguments = ["-e", "use", "-i", bundleID]
         do {
             try task.run()
+            logger.notice("[Con] pluginkit -e use -i \(bundleID, privacy: .public) requested")
+            appendDebugEntry(.init(category: .wake, method: "pluginkit",
+                                   summary: "pluginkit -e use -i \(bundleID) requested"))
         } catch {
-            logger.error("[Con] open -b extension failed: \(error.localizedDescription, privacy: .public)")
+            logger.error("[Con] pluginkit wake failed: \(error.localizedDescription, privacy: .public)")
+            appendDebugEntry(.init(category: .wake, method: "pluginkit",
+                                   summary: "pluginkit wake failed: \(error.localizedDescription)"))
         }
     }
 
@@ -130,22 +195,43 @@ class AppState: ObservableObject {
         }
     }
 
-    /// Check via pluginkit whether the extension is registered with the system.
-    private func checkExtensionRegistration() {
+    /// Check via pluginkit whether the extension is registered with the system,
+    /// decoding the election-state flag (`+`/`-`/`!`/`=`) to distinguish
+    /// Enabled / Disabled / Not Installed. Public so the Extensions tab's
+    /// Refresh button can re-run it after the user toggles the extension in
+    /// System Settings. Also drives the startup auto-launch: once the real
+    /// registration status is known, registered+disconnected extensions with
+    /// `autoLaunch == true` are woken (idempotent under `pluginkit -e use`).
+    func checkExtensionRegistration() {
         Task {
-            let installed = await Self.isExtensionRegistered()
-            if installed {
-                if let index = extensions.firstIndex(where: { $0.bundleID == Constants.extensionBundleID }) {
-                    if !extensions[index].isRegistered {
-                        extensions[index].isRegistered = true
-                        logger.notice("[Con] Extension registered via pluginkit")
-                    }
+            let status = await Self.extensionRegistrationStatus()
+            if let index = extensions.firstIndex(where: { $0.bundleID == Constants.extensionBundleID }) {
+                if extensions[index].registrationStatus != status {
+                    extensions[index].registrationStatus = status
+                    logger.notice("[Con] Extension registration status: \(status.rawValue, privacy: .public)")
                 }
             }
+            // Now that registration is known, wake any registered, disconnected
+            // extension the user wants auto-launched. Safe to run on every
+            // refresh: `pluginkit -e use` is idempotent and the `!isConnected`
+            // guard skips extensions that are already alive.
+            autoLaunchExtensions()
         }
     }
 
-    nonisolated private static func isExtensionRegistered() async -> Bool {
+    /// Deep-link to System Settings → Extensions so the user can enable a
+    /// disabled extension without hunting for the pane.
+    func openSystemSettingsForExtensions() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.ExtensionsPreferences") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    /// Probe `pluginkit -m -p com.apple.FinderSync` and decode the leading
+    /// election-state flag of our extension's line into a `RegistrationStatus`.
+    /// On any failure (pluginkit missing, parse error, exit non-zero) we
+    /// conservatively report `.notInstalled` so the UI shows actionable guidance.
+    nonisolated private static func extensionRegistrationStatus() async -> RegistrationStatus {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .utility).async {
                 let task = Process()
@@ -158,13 +244,41 @@ class AppState: ObservableObject {
                     task.waitUntilExit()
                     let data = pipe.fileHandleForReading.readDataToEndOfFile()
                     let output = String(data: data, encoding: .utf8) ?? ""
-                    let registered = output.contains(Constants.extensionBundleID)
-                    continuation.resume(returning: registered)
+                    continuation.resume(returning: parseRegistrationStatus(from: output))
                 } catch {
                     logger.error("pluginkit check failed: \(error.localizedDescription)")
-                    continuation.resume(returning: false)
+                    continuation.resume(returning: .notInstalled)
                 }
             }
+        }
+    }
+
+    /// Decode the election-state flag from `pluginkit -m` output. Each line
+    /// begins with a flag char (after optional leading whitespace); we locate
+    /// our extension's line and read that flag. See `RegistrationStatus` docs
+    /// and the `pluginkit` man page for the flag semantics.
+    nonisolated private static func parseRegistrationStatus(from output: String) -> RegistrationStatus {
+        guard let line = output
+            .components(separatedBy: .newlines)
+            // A line "contains" the bundle id only when it actually appears
+            // (substring match; false positives are not a concern here since
+            // bundle ids are unique reverse-DNS strings).
+            .first(where: { $0.contains(Constants.extensionBundleID) })
+        else { return .notInstalled }
+        // The flag is the first non-whitespace character on the line.
+        guard let flag = line.first(where: { !$0.isWhitespace }) else {
+            return .notInstalled
+        }
+        switch flag {
+        // Man page: `+` = "elected to use the plug-in";
+        //           `!` = "elected to use the plug-in for debugger use".
+        // Both are "elected to use", i.e. the extension is active — a
+        // FinderSync extension flagged `!` runs normally (it just signals the
+        // user enabled it for debugging), so it must not read as disabled.
+        case "+", "!":  return .enabled
+        // `-` = "elected to ignore"; `=` = "superseded by another plug-in".
+        case "-", "=":  return .disabled
+        default:        return .disabled   // `?` unknown → treat as actionable
         }
     }
 
@@ -190,6 +304,51 @@ class AppState: ObservableObject {
 
     func clearLog() {
         executionLog.removeAll()
+    }
+
+    // MARK: - Debug Log
+
+    func clearDebugLog() {
+        debugLog.removeAll()
+    }
+
+    /// Append a pre-built entry on the main actor, trimming to the cap.
+    /// Used for wake/lifecycle events generated directly on the main actor.
+    /// No-op when the Debug Log is disabled (the toggle in General settings);
+    /// gating here covers every recording path in one place.
+    private func appendDebugEntry(_ entry: DebugLogEntry) {
+        guard SharedUserDefaults.debugLogEnabled else { return }
+        debugLog.append(entry)
+        if debugLog.count > maxDebugEntries {
+            debugLog.removeFirst(debugLog.count - maxDebugEntries)
+        }
+    }
+
+    /// Append an activity reported by `RPCServer`. Heartbeat activities
+    /// (ping/pong) are folded into the last entry if it is itself a heartbeat
+    /// group, so the log isn't dominated by 1s-interval ping/pong traffic.
+    private func appendDebugActivity(_ activity: RPCActivity) {
+        // Fold consecutive heartbeats into the previous heartbeat entry.
+        if activity.isHeartbeat,
+           let last = debugLog.last,
+           last.category == .rpc,
+           (last.method == "ping" || last.method == "pong") {
+            // Keep folding the same direction+method as the group leader so
+            // a ping group doesn't absorb a pong (or vice-versa) of the other
+            // direction — but we DO want consecutive same-method heartbeats
+            // (e.g. repeated Con→Ext pings) to accumulate.
+            debugLog[debugLog.count - 1].count += 1
+            debugLog[debugLog.count - 1].endTimestamp = Date()
+            return
+        }
+        let entry = DebugLogEntry(
+            category: activity.kind,
+            direction: activity.direction,
+            method: activity.method,
+            rpcID: activity.rpcID,
+            summary: activity.summary
+        )
+        appendDebugEntry(entry)
     }
 
     // MARK: - Lock file (single-instance guard)
@@ -219,6 +378,15 @@ class AppState: ObservableObject {
     private func removeLockFile() {
         guard let url = Constants.containerLockURL else { return }
         try? FileManager.default.removeItem(at: url)
+    }
+
+    /// Release the single-instance lock so a relaunched Container can start
+    /// without being killed by the duplicate guard. Call before restart.
+    func releaseInstanceLock() {
+        if lockFileDescriptor >= 0 {
+            close(lockFileDescriptor)
+        }
+        removeLockFile()
     }
 
     // MARK: - Convenience accessors
@@ -252,6 +420,31 @@ class AppState: ObservableObject {
         set {
             configuration.newFileTemplates = newValue
             saveConfiguration()
+        }
+    }
+
+    /// Master switch for the "Open With" section, surfaced in the Apps tab
+    /// header. Mirrors how the New File section is gated by the `.newFile`
+    /// action item below.
+    var appsSectionEnabled: Bool {
+        get { configuration.appsSectionEnabled }
+        set {
+            configuration.appsSectionEnabled = newValue
+            saveConfiguration()
+        }
+    }
+
+    /// The New File section's master switch lives in the `.newFile` action
+    /// item (gated in MenuBuilder). Exposed here for the File tab header toggle.
+    var newFileSectionEnabled: Bool {
+        get {
+            configuration.actionItems.first(where: { $0.actionType == .newFile })?.isEnabled ?? false
+        }
+        set {
+            if let index = configuration.actionItems.firstIndex(where: { $0.actionType == .newFile }) {
+                configuration.actionItems[index].isEnabled = newValue
+                saveConfiguration()
+            }
         }
     }
 
@@ -291,6 +484,30 @@ class AppState: ObservableObject {
     var commandExecutionEnabled: Bool {
         get { !SharedUserDefaults.commandLogOnly }
         set { SharedUserDefaults.commandLogOnly = !newValue }
+    }
+
+    // MARK: - Debug Log Settings
+
+    /// Whether the Debug Log window records RPC/wake events. Off by default;
+    /// when off, all append paths short-circuit so the bookkeeping is free.
+    var debugLogEnabled: Bool {
+        get { SharedUserDefaults.debugLogEnabled }
+        set {
+            SharedUserDefaults.debugLogEnabled = newValue
+            // Clear any stale records when disabling so the window doesn't
+            // show historical data the user no longer wants surfaced.
+            if !newValue { debugLog.removeAll() }
+        }
+    }
+
+    /// Whether the Execution Log window records command executions. On by
+    /// default (the primary user-facing log). When off, `appendLog` no-ops.
+    var executionLogEnabled: Bool {
+        get { SharedUserDefaults.executionLogEnabled }
+        set {
+            SharedUserDefaults.executionLogEnabled = newValue
+            if !newValue { executionLog.removeAll() }
+        }
     }
 
     /// Execute a command received from the Extension.
@@ -361,7 +578,10 @@ class AppState: ObservableObject {
                 result = CommandResult(success: false, errorDescription: "newFile: invalid payload")
                 break
             }
-            let templates = SharedUserDefaults.menuConfiguration.newFileTemplates
+            // Match MenuBuilder: only enabled templates are listed, and the
+            // incoming index is relative to that filtered list. Filter here
+            // with the same predicate so the index resolves to the same template.
+            let templates = SharedUserDefaults.menuConfiguration.newFileTemplates.filter(\.isEnabled)
             guard index >= 0, index < templates.count else {
                 logger.warning("newFile: template index \(index) out of range")
                 result = CommandResult(success: false, errorDescription: "newFile: template index \(index) out of range")
@@ -376,7 +596,7 @@ class AppState: ObservableObject {
             } else {
                 parentDir = targetURL.deletingLastPathComponent()
             }
-            let fileName = template.fileName
+            let fileName = template.resolvedFileName
             var fileURL = parentDir.appendingPathComponent(fileName)
             var counter = 1
             while fm.fileExists(atPath: fileURL.path) {
@@ -413,14 +633,6 @@ class AppState: ObservableObject {
             }
             result = failed.map { CommandResult(success: false, errorDescription: "toggleHidden failed: \($0)") }
                 ?? CommandResult(success: true)
-
-        case .openParent:
-            let parents = Set(fileURLs.map { $0.deletingLastPathComponent() })
-            for parent in parents {
-                NSWorkspace.shared.open(parent)
-            }
-            logger.notice("Opened \(parents.count) parent folder(s)")
-            result = CommandResult(success: true)
 
         case .shell:
             guard let cmd = command.command else {
@@ -470,7 +682,6 @@ class AppState: ObservableObject {
         case .copyPath:     return "copyPath"
         case .copyFileName: return "copyFileName"
         case .toggleHidden: return "toggleHidden"
-        case .openParent:   return "openParent"
         case .shell:        return "shell"
         }
     }
@@ -483,6 +694,7 @@ class AppState: ObservableObject {
         shellCommand: String?,
         logOnly: Bool
     ) async {
+        guard SharedUserDefaults.executionLogEnabled else { return }
         let entry = ExecutionLogEntry(
             timestamp: Date(),
             action: actionName,
