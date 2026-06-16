@@ -12,11 +12,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @MainActor func openSettings() {
-        if let window = NSApp.windows.first(where: { $0.title.contains("mac-right-menu") }) {
+        if let window = NSApp.windows.first(where: {
+            $0.title.contains("mac-right-menu")
+        }) {
             NSApp.activate(ignoringOtherApps: true)
             window.makeKeyAndOrderFront(self)
         } else {
-            NotificationCenter.default.post(name: .openSettingsWindow, object: nil)
+            NotificationCenter.default.post(
+                name: .openSettingsWindow,
+                object: nil
+            )
         }
     }
 }
@@ -37,15 +42,21 @@ struct MacRightMenuApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            Button("Open Settings...") {
+            Button("Open Settings…") {
                 NSApp.activate(ignoringOtherApps: true)
-                if let window = NSApp.windows.first(where: { $0.title.contains("mac-right-menu") }) {
+                if let window = NSApp.windows.first(where: {
+                    $0.title.contains("mac-right-menu")
+                }) {
                     window.makeKeyAndOrderFront(self)
                 } else {
                     openWindow(id: "settings")
                 }
             }
             .keyboardShortcut(",")
+            Button("Show Execution Log") {
+                NSApp.activate(ignoringOtherApps: true)
+                openWindow(id: "log")
+            }.keyboardShortcut("l")
             Divider()
             Button("Quit") {
                 appState.shutdownExtensions()
@@ -62,16 +73,22 @@ struct MacRightMenuApp: App {
             SettingsView()
                 .environmentObject(appState)
                 .frame(
-                    minWidth: 500,
-                    maxWidth: 500,
-                    minHeight: 365,
+                    minWidth: 560,
+                    maxWidth: 560,
+                    minHeight: 400,
                     maxHeight: 600
                 )
         }
         .windowResizability(.contentSize)
         .commands {
-            CommandGroup(replacing: .newItem) { }
+            CommandGroup(replacing: .newItem) {}
         }
+
+        Window("Execution Log", id: "log") {
+            ExecutionLogView()
+                .environmentObject(appState)
+        }
+        .windowResizability(.contentMinSize)
     }
 }
 

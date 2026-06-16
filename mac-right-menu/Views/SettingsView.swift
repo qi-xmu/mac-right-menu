@@ -23,5 +23,6 @@ struct SettingsView: View {
                     Label("New File", systemImage: "doc.badge.plus")
                 }
         }
+        .frame(minWidth: 560, minHeight: 420)
     }
 }
