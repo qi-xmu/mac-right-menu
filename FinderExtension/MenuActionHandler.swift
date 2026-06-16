@@ -10,8 +10,7 @@ enum MenuActionHandler {
 
     // MARK: - Single Action Entry Point
 
-    static func handleMenuAction(_ sender: NSMenuItem, targetURL: URL, selectedURLs: [URL], proxy: ContainerXPCProtocol?) {
-        let config = SharedUserDefaults.menuConfiguration
+    static func handleMenuAction(_ sender: NSMenuItem, targetURL: URL, selectedURLs: [URL], config: MenuConfiguration, client: RPCClient) {
         let urls = selectedURLs.isEmpty ? [targetURL] : selectedURLs
         let tag = sender.tag
         let paths = urls.map(\.path)
@@ -19,8 +18,6 @@ enum MenuActionHandler {
         let command: CommandRequest?
 
         switch tag {
-        case Constants.TagBase.appItem.rawValue:
-            command = buildAppOpenCommand(urls: urls, menuItem: sender, config: config)
         case Constants.TagBase.copyPath.rawValue:
             command = CommandRequest(action: .copyPath, files: paths)
         case Constants.TagBase.copyFileName.rawValue:
@@ -30,69 +27,71 @@ enum MenuActionHandler {
         case Constants.TagBase.openParent.rawValue:
             command = CommandRequest(action: .openParent, files: paths)
         default:
-            if tag >= Constants.TagBase.newFile.rawValue {
-                let index = tag - Constants.TagBase.newFile.rawValue
+            let nfBase = Constants.TagBase.newFile.rawValue
+            let appBase = Constants.TagBase.appItem.rawValue
+            let opBase = Constants.TagBase.copyPath.rawValue
+            let shellBase = Constants.TagBase.shell.rawValue
+
+            if tag >= nfBase && tag < appBase {
+                // 0–999: New File
+                let index = tag - nfBase
                 guard index >= 0, index < config.newFileTemplates.count else { return }
-                command = buildNewFileCommand(template: config.newFileTemplates[index], targetURL: targetURL)
+                command = buildNewFileCommand(index: index, targetURL: targetURL, selectedURLs: selectedURLs)
+            } else if tag >= appBase && tag < opBase {
+                // 1000–1999: Open With App
+                let index = tag - appBase
+                let enabledApps = config.appItems.filter(\.isEnabled)
+                guard index >= 0, index < enabledApps.count else { return }
+                command = buildAppOpenCommand(urls: urls, app: enabledApps[index])
+            } else if tag >= shellBase {
+                // 4000+: Shell
+                command = CommandRequest(action: .shell, files: paths)
             } else {
                 command = nil
             }
         }
 
         if let command {
-            dispatchCommand(command, proxy: proxy)
+            dispatchCommand(command, tag: tag, client: client)
         }
     }
 
     // MARK: - IPC Dispatch
 
-    private static func dispatchCommand(_ command: CommandRequest, proxy: ContainerXPCProtocol?) {
-        guard let proxy else {
-            logger.notice("[XPC DOWN] action=\(command.action.rawValue, privacy: .public) files=\(command.files, privacy: .public)")
-            return
-        }
-        guard let data = try? JSONEncoder().encode(command) else {
-            logger.error("Failed to encode command")
-            return
-        }
-        proxy.executeCommand(data) { resultData in
-            let result = (try? JSONDecoder().decode(CommandResult.self, from: resultData)).map { $0.success } ?? false
-            logger.notice("Dispatched \(command.action.rawValue, privacy: .public): \(result ? "OK" : "FAIL")")
+    private static func dispatchCommand(_ command: CommandRequest, tag: Int, client: RPCClient) {
+        let filesStr = command.files.description
+        let extraStr = command.extra?.description ?? "nil"
+        client.executeCommand(command) { result in
+            if let result {
+                logger.notice("[RPC OK] \(tag, privacy: .public) \(String(describing: command.action), privacy: .public) \(filesStr, privacy: .public) \(extraStr, privacy: .public) → \(result.success ? "OK" : "FAIL", privacy: .public)")
+            } else {
+                logger.notice("[RPC DOWN] \(tag, privacy: .public) \(String(describing: command.action), privacy: .public) \(filesStr, privacy: .public) \(extraStr, privacy: .public)")
+            }
         }
     }
 
     // MARK: - Command Builders
 
-    private static func buildAppOpenCommand(
-        urls: [URL],
-        menuItem: NSMenuItem,
-        config: MenuConfiguration
-    ) -> CommandRequest? {
-        let app: AppMenuItem?
-        if let obj = menuItem.representedObject as? AppMenuItem {
-            app = obj
-        } else {
-            app = config.appItems.first(where: { $0.isEnabled })
-        }
-        guard let app else { return nil }
-        return CommandRequest(
+    private static func buildAppOpenCommand(urls: [URL], app: AppMenuItem) -> CommandRequest {
+        CommandRequest(
             action: .openWithApp,
             files: urls.map(\.path),
             extra: ["appPath": app.appURL.path, "appDisplayName": app.displayName]
         )
     }
 
-    private static func buildNewFileCommand(
-        template: NewFileTemplate,
-        targetURL: URL
-    ) -> CommandRequest? {
-        guard let jsonData = try? JSONEncoder().encode(template),
-              let jsonString = String(data: jsonData, encoding: .utf8)
-        else { return nil }
+    private static func buildNewFileCommand(index: Int, targetURL: URL, selectedURLs: [URL]) -> CommandRequest {
+        let dirURL: URL
+        if let firstFile = selectedURLs.first {
+            dirURL = firstFile.deletingLastPathComponent()
+        } else {
+            dirURL = targetURL
+        }
+        logger.notice("newFile index=\(index) dir=\(dirURL.path, privacy: .public)")
         return CommandRequest(
             action: .newFile,
-            files: [targetURL.path],
-            extra: ["templateJSON": jsonString]
+            files: [dirURL.path],
+            extra: ["templateIndex": "\(index)"]
         )
     }
 }

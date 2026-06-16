@@ -4,14 +4,13 @@ import os.log
 
 private let logger = Logger(subsystem: Constants.extensionBundleID, category: "finder-sync")
 
-class FinderSyncExtension: FIFinderSync {
+class FinderSyncExtension: FIFinderSync, @unchecked Sendable {
 
-    var xpcConnection: NSXPCConnection?
-    var remoteProxy: ContainerXPCProtocol? {
-        xpcConnection?.remoteObjectProxyWithErrorHandler { error in
-            logger.error("XPC error: \(error.localizedDescription)")
-        } as? ContainerXPCProtocol
-    }
+    private let rpcClient = RPCClient()
+    private var cachedConfig: MenuConfiguration = .default
+    private let configLock = NSLock()
+
+    var rpc: RPCClient { rpcClient }
 
     // MARK: - Initialization
 
@@ -19,23 +18,33 @@ class FinderSyncExtension: FIFinderSync {
         super.init()
         logger.notice("FinderSync initialized")
 
+        // cachedConfig stays at .default until the RPC connection comes up,
+        // at which point getConfig pulls the real config from the Container.
+        // Reading our own UserDefaults here is unreliable — the two processes
+        // keep separate stores, so it would only ever see a stale/default copy.
+        logger.notice("[Ext] Config: awaiting initial getConfig from Container")
+
         FIFinderSyncController.default().directoryURLs = [URL(fileURLWithPath: "/")]
-        connectToContainer()
-    }
 
-    // MARK: - XPC Connection
-
-    private func connectToContainer() {
-        let conn = NSXPCConnection(machServiceName: "com.qi-xmu.mac-right-menu.command")
-        conn.remoteObjectInterface = NSXPCInterface(with: ContainerXPCProtocol.self)
-        conn.exportedInterface = NSXPCInterface(with: ExtensionXPCProtocol.self)
-        conn.exportedObject = self
-        conn.invalidationHandler = { [weak self] in
-            logger.warning("XPC connection to Container lost")
-            self?.xpcConnection = nil
+        // Refresh the in-memory cache from both channels:
+        //  1. getConfig pull on connect (initial load)
+        //  2. configDidChange push (live updates)
+        // Both route through this handler. It runs on an RPC background queue;
+        // cachedConfig is read in menu(for:) on the Finder thread, so guard the
+        // write with a lock. MenuConfiguration is a value type, so the swap is safe.
+        rpcClient.setConfigChangeHandler { [weak self] newConfig in
+            guard let self else { return }
+            self.configLock.lock()
+            self.cachedConfig = newConfig
+            self.configLock.unlock()
+            let actions = newConfig.actionItems.map { "\($0.actionType):\($0.isEnabled ? "on" : "off")" }.joined(separator: " ")
+            logger.notice("[Ext] Config applied: enabled=\(newConfig.isEnabled) apps=\(newConfig.appItems.count) actions=[\(actions, privacy: .public)] templates=\(newConfig.newFileTemplates.count)")
         }
-        conn.resume()
-        xpcConnection = conn
+
+        // Connect to the Container's JSON-RPC server. RPCClient handles retries
+        // internally if the Container is not yet running. On .ready it auto-pulls
+        // the current config via getConfig.
+        rpcClient.connect()
     }
 
     // MARK: - Menu
@@ -43,8 +52,14 @@ class FinderSyncExtension: FIFinderSync {
     override func menu(for menuKind: FIMenuKind) -> NSMenu {
         guard menuKind == .contextualMenuForItems else { return NSMenu() }
 
-        let config = SharedUserDefaults.menuConfiguration
-        guard config.isEnabled else { return NSMenu() }
+        configLock.lock()
+        let config = cachedConfig
+        configLock.unlock()
+
+        guard config.isEnabled else {
+            logger.debug("menu: disabled, returning empty")
+            return NSMenu()
+        }
 
         let hasSelection = FIFinderSyncController.default().selectedItemURLs() != nil
         let targetURL = FIFinderSyncController.default().targetedURL()
@@ -66,21 +81,6 @@ class FinderSyncExtension: FIFinderSync {
             return
         }
         let selectedURLs = FIFinderSyncController.default().selectedItemURLs() ?? []
-        MenuActionHandler.handleMenuAction(sender, targetURL: targetURL, selectedURLs: selectedURLs, proxy: remoteProxy)
-    }
-}
-
-// MARK: - ExtensionXPCProtocol
-
-extension FinderSyncExtension: ExtensionXPCProtocol {
-    func settingsDidChange() {
-        logger.notice("Container notified settings changed")
-    }
-
-    func shutdownImminent() {
-        logger.notice("Container shutting down — Extension going dormant")
-        FIFinderSyncController.default().directoryURLs = []
-        xpcConnection?.invalidate()
-        xpcConnection = nil
+        MenuActionHandler.handleMenuAction(sender, targetURL: targetURL, selectedURLs: selectedURLs, config: cachedConfig, client: rpcClient)
     }
 }
