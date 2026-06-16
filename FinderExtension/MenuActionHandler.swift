@@ -24,8 +24,6 @@ enum MenuActionHandler {
             command = CommandRequest(action: .copyFileName, files: paths)
         case Constants.TagBase.toggleHidden.rawValue:
             command = CommandRequest(action: .toggleHidden, files: paths)
-        case Constants.TagBase.openParent.rawValue:
-            command = CommandRequest(action: .openParent, files: paths)
         default:
             let nfBase = Constants.TagBase.newFile.rawValue
             let appBase = Constants.TagBase.appItem.rawValue

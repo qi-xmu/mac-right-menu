@@ -9,7 +9,6 @@ public struct CommandRequest: Codable, Sendable {
         case copyPath = 2
         case copyFileName = 3
         case toggleHidden = 4
-        case openParent = 5
         case shell = 6
     }
 

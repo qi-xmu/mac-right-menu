@@ -15,7 +15,6 @@ public enum ActionType: String, Codable, CaseIterable {
     case copyPath
     case copyFileName
     case toggleHidden
-    case openParent
 
     public var displayTitle: String {
         switch self {
@@ -23,7 +22,6 @@ public enum ActionType: String, Codable, CaseIterable {
         case .copyFileName: return String(localized: "Copy File Name")
         case .newFile: return String(localized: "New File")
         case .toggleHidden: return String(localized: "Toggle Hidden")
-        case .openParent: return String(localized: "Open Parent Directory")
         }
     }
 
@@ -33,7 +31,16 @@ public enum ActionType: String, Codable, CaseIterable {
         case .copyFileName: return "text.cursor"
         case .newFile: return "doc.badge.plus"
         case .toggleHidden: return "eye.slash"
-        case .openParent: return "arrow.up.doc"
+        }
+    }
+
+    /// Short user-facing description shown under each action in Settings.
+    public var localizedDescription: String {
+        switch self {
+        case .copyPath: return String(localized: "Copy the full file path to clipboard")
+        case .copyFileName: return String(localized: "Copy only the file name to clipboard")
+        case .newFile: return String(localized: "Create a new file from templates")
+        case .toggleHidden: return String(localized: "Show or hide files in Finder")
         }
     }
 }

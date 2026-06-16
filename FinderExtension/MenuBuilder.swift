@@ -40,13 +40,19 @@ enum MenuBuilder {
 
         // ── Section: New File (tag: 0–999) ──
         if enabledActions.contains(where: { $0.actionType == .newFile }) {
-            let templates = configuration.newFileTemplates
+            // Only enabled templates appear, and their tags are numbered
+            // consecutively over this filtered list (matching AppState, which
+            // resolves the index against the same filter).
+            let templates = configuration.newFileTemplates.filter(\.isEnabled)
             if !templates.isEmpty {
+                // Uses a dedicated "New File" key (not the shared "File" key,
+                // which is also the Settings tab label / action-row title) so
+                // the Finder submenu can read "新建文件" without touching those.
                 let submenuItem = NSMenuItem(title: String(localized: "New File"), action: nil, keyEquivalent: "")
                 submenuItem.image = icon("doc.badge.plus")
                 let submenu = NSMenu(title: String(localized: "New File"))
                 for (index, template) in templates.enumerated() {
-                    let item = NSMenuItem(title: template.fileName, action: handlerSelector, keyEquivalent: "")
+                    let item = NSMenuItem(title: template.resolvedFileName, action: handlerSelector, keyEquivalent: "")
                     item.target = target
                     item.tag = Constants.TagBase.newFile.rawValue + index
                     item.representedObject = template
@@ -58,7 +64,8 @@ enum MenuBuilder {
         }
 
         // ── Section: Open With (tag: 1000–1999) ──
-        if !enabledApps.isEmpty {
+        // Gated by the section master switch in addition to per-app enabled.
+        if configuration.appsSectionEnabled, !enabledApps.isEmpty {
             if enabledApps.count == 1, let app = enabledApps.first {
                 let item = NSMenuItem(
                     title: String(localized: "Open in \(app.displayName)"),
@@ -90,7 +97,7 @@ enum MenuBuilder {
         }
 
         // ── Section: 操作 (tag: 2000–2999) ──
-        let operationActions: [ActionType] = [.copyPath, .copyFileName, .toggleHidden, .openParent]
+        let operationActions: [ActionType] = [.copyPath, .copyFileName, .toggleHidden]
         let hasOps = enabledActions.contains(where: { operationActions.contains($0.actionType) })
         if hasOps {
             for actionItem in enabledActions where operationActions.contains(actionItem.actionType) {
@@ -99,7 +106,6 @@ enum MenuBuilder {
                 case .copyPath:     tag = Constants.TagBase.copyPath.rawValue
                 case .copyFileName: tag = Constants.TagBase.copyFileName.rawValue
                 case .toggleHidden: tag = Constants.TagBase.toggleHidden.rawValue
-                case .openParent:   tag = Constants.TagBase.openParent.rawValue
                 default:            continue
                 }
                 let item = NSMenuItem(title: actionItem.title, action: handlerSelector, keyEquivalent: "")
