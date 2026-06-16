@@ -1,101 +1,23 @@
 # 通信协议设计
 
-> 日期: 2026-06-08
-> 状态: 设计中
+> 日期: 2026-06-08（初版）
+> 更新: 2026-06-16（NSXPC → JSON-RPC over TCP；configDidChange 实时推送 + getConfig 连接时拉取；RPC 返回真实执行结果；心跳保活 ping/pong）
+> 状态: 已实现
 
 ## 概述
 
-将 Extension 和 Container App 之间的所有通信统一为 NSXPCConnection 双向通道，替代现有的 DNC + UserDefaults + 文件心跳三套机制。
+Extension 和 Container App 之间采用 **JSON-RPC 2.0 over TCP loopback** 通信。Extension（沙盒）通过 `RPCClient` 连接 Container（非沙盒）监听的 `127.0.0.1:57421`，将用户右键意图（`CommandRequest`）发送给 Container 执行。
 
-## 当前 vs 目标
+### 为什么不用 XPC
 
-```
-当前 (3 套机制)                         目标 (1 套机制)
-─────────────                         ───────────
-指令:   Extension ──DNC──► Container    ──┐
-      └──UserDefaults──pendingCmd──►     │
-                                         │   Extension ◄─NSXPCConnection─► Container
-配置同步: Extension ◄──DNC── Container   │       (双向 RPC, mach port)
-                                         │
-心跳: Extension ──文件── Container       │
-      Container ──文件── Extension     ──┘
-```
+本项目先后实测了三种 XPC 方案，均不可行，最终改用 TCP。完整排查历程见 `BUG1.md`。
 
-**可以移除的旧代码**：
-- `SharedUserDefaults.pendingCommand` 读写
-- `Constants.Notifications.executeCommand` DNC 通知
-- `Constants.Notifications.shutdownRequested` DNC 通知
-- `Shared/IPC/Heartbeat.swift` 整文件
-- `SharedUSERDefaults` 中的 heartbeat 相关 key
-- `FinderSync.startHeartbeat()` + Timer
-- `AppState.startHeartbeat()` + Timer
-
----
-
-## 协议定义
-
-```swift
-import Foundation
-
-// ── Extension 调用 Container ──
-
-@objc protocol ContainerXPCProtocol {
-    /// Extension 请求 Container 执行文件操作
-    func executeCommand(_ command: CommandRequest, completion: @escaping (CommandResult) -> Void)
-}
-
-// ── Container 调用 Extension ──
-
-@objc protocol ExtensionXPCProtocol {
-    /// Container 通知 Extension 配置已变更，下次 menu(for:) 时重新读取
-    func settingsDidChange()
-    /// Container 即将退出，Extension 停止心跳、注销监听
-    func shutdownImminent()
-}
-```
-
-### CommandRequest（NSSecureCoding 版）
-
-```swift
-final class CommandRequest: NSObject, NSSecureCoding {
-    static var supportsSecureCoding: Bool { true }
-
-    enum Action: Int {
-        case copyPath      = 2000
-        case copyFileName  = 2001
-        case toggleHidden  = 2002
-        case openParent    = 2003
-        case newFile       = 0     // tag = 0 + templateIndex
-        case openWithApp   = 1000  // tag = 1000 + appIndex
-        case shell         = 4000  // tag = 4000 + shellIndex
-    }
-
-    let action: Action
-    let files: [String]
-    let command: String?          // shell 命令模板
-    let extra: [String: String]?  // 附带参数
-
-    // NSSecureCoding ...
-}
-```
-
-### CommandResult（返回值）
-
-```swift
-final class CommandResult: NSObject, NSSecureCoding {
-    static var supportsSecureCoding: Bool { true }
-
-    let success: Bool
-    let errorDescription: String?
-
-    init(success: Bool, errorDescription: String? = nil) {
-        self.success = success
-        self.errorDescription = errorDescription
-    }
-}
-```
-
----
+| XPC 方案 | 排除原因（实测） |
+|----------|-----------------|
+| `NSXPCListener(machServiceName:)` + `NSMachServices` Info.plist | 非沙盒 Container 的 key 被 launchd 忽略，mach service 不注册（`launchctl print` 证实） |
+| `temporary-exception.mach-register.global-name` | 加了仍不注册（现代 macOS 废弃 runtime `bootstrap_register`） |
+| XPC Service（`serviceName`） | Extension 跨进程不可达（XPC Service 运行在宿主 App 进程空间内） |
+| 匿名 listener + endpoint 文件 | `NSXPCListenerEndpoint` 无法用 `NSKeyedArchiver` 序列化（mach port send right 是内核资源） |
 
 ## 架构
 
@@ -103,43 +25,81 @@ final class CommandResult: NSObject, NSSecureCoding {
 ┌─────────────────────────────────────────────────────────────┐
 │                         Container App                       │
 │  ┌─────────────────────┐      ┌──────────────────────────┐ │
-│  │ NSXPCListener       │      │ AppState                 │ │
-│  │ service: "com..menu"│─────►│ + executeCommand()       │ │
-│  │                     │      │ + settingsDidChange()    │ │
-│  │ exportedObject:     │      │ + shutdownImminent()     │ │
-│  │   ContainerXPC      │      └──────────────────────────┘ │
+│  │ RPCServer           │      │ AppState                 │ │
+│  │ NWListener          │─────►│ + executeCommand()       │ │
+│  │ 127.0.0.1:57421     │      │   (文件操作，无沙盒)      │ │
+│  │                     │      └──────────────────────────┘ │
+│  │ onCommand 处理请求   │                                    │
+│  └─────────┬───────────┘                                    │
+└────────────┼────────────────────────────────────────────────┘
+             │  TCP (JSON-RPC over \n-delimited JSON)
+┌────────────┼────────────────────────────────────────────────┐
+│            │              Finder Extension                   │
+│  ┌─────────▼───────────┐      ┌──────────────────────────┐ │
+│  │ RPCClient           │      │ FinderSync               │ │
+│  │ NWConnection        │      │ + menu(for:)             │ │
+│  │ → 127.0.0.1:57421   │      │ + handleMenuAction()     │ │
+│  │                     │─────►│                          │ │
+│  │ executeCommand()    │      │ cachedConfig (内存)       │ │
+│  │ 自动重连（2s）       │      └──────────────────────────┘ │
 │  └─────────────────────┘                                    │
-└──────────────────────┬─────────────────────────────────────┘
-                       │  mach port
-┌──────────────────────┴─────────────────────────────────────┐
-│                      Finder Extension                      │
-│  ┌─────────────────────┐      ┌──────────────────────────┐ │
-│  │ NSXPCConnection     │      │ FinderSync               │ │
-│  │ endpoint: "com..menu"│     │ + menu(for:)             │ │
-│  │                     │      │ + handleMenuAction()     │ │
-│  │ remoteObjectProxy:  │─────►│                          │ │
-│  │   ContainerXPC      │      │ exportedObject:          │ │
-│  │                     │      │   ExtensionXPC           │ │
-│  │ invalidationHandler │      └──────────────────────────┘ │
-│  └─────────────────────┘                                    │
-└────────────────────────────────────────────────────────────┘
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ### 角色
 
 | 角色 | 组件 | 说明 |
 |------|------|------|
-| XPC Server | Container App | 注册 `NSXPCListener`，接收 Extension 连接 |
-| XPC Client | Extension | 创建 `NSXPCConnection`，连接 Container |
-| 导出接口 (Extension→Container) | `ContainerXPCProtocol` | executeCommand |
-| 导出接口 (Container→Extension) | `ExtensionXPCProtocol` | settingsDidChange, shutdownImminent |
+| RPC Server | Container App | `RPCServer` 用 `NWListener` 监听 TCP，非沙盒无需额外 entitlement |
+| RPC Client | Extension | `RPCClient` 用 `NWConnection` 连接，需 `network.client` entitlement |
+| 调用方向（请求） | Extension → Container | `executeCommand`（执行指令）、`getConfig`（连接时拉取配置）、`ping`（心跳保活） |
+| 推送方向（通知） | Container → Extension | Container 改配置后广播 `configDidChange` notification |
 
 Container 做 Server 的理由：
-- Container 生命周期由用户控制（随登录启动或手动打开）→ 一直在线
-- Extension 由 Finder 按需启动 → 连接断开不影响 Container
-- Mach service 注册在 Container App bundle 中更自然
+- Container 生命周期由用户控制（一直在线）→ 监听稳定
+- Extension 由 Finder 按需启动 → 作为 client 连接/断开不影响 Container
+- Container 非沙盒可自由监听端口；Extension 沙盒只需出站连接权限
 
----
+## JSON-RPC 2.0 协议
+
+### 请求（Extension → Container）
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "executeCommand",
+  "params": {
+    "action": 2,
+    "files": ["/path/to/file"],
+    "command": null,
+    "extra": null
+  }
+}
+```
+
+### 响应（Container → Extension）
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": { "success": true, "errorDescription": null }
+}
+```
+
+### 字段映射
+
+| JSON-RPC | Swift 类型 | 说明 |
+|----------|-----------|------|
+| `params` | `RPCParams` ↔ `CommandRequest` | `action` 用 `CommandRequest.Action.rawValue` |
+| `result` | `RPCResult` ↔ `CommandResult` | success + errorDescription |
+
+### 传输约定
+
+- **传输层**：TCP，`127.0.0.1:57421`（固定端口，定义在 `Constants.rpcPort`）
+- **消息边界**：line-delimited JSON（每条消息以 `\n` 结尾）
+- **用 `127.0.0.1` 而非 `localhost`**：避免沙盒内 `/etc/hosts` 解析问题
 
 ## 生命周期
 
@@ -147,15 +107,22 @@ Container 做 Server 的理由：
 
 ```
 Container App 启动
-    → 创建 NSXPCListener(machServiceName: "com.qi-xmu.mac-right-menu.command")
-    → 设置 delegate，接受 incoming connections
+    → RPCServer.start()
+    → NWListener(using: .tcp, on: 57421)
+    → listener.start(queue: .global(qos: .utility))
+    → 监听就绪，等待连接
 
 Extension 被 Finder 唤醒 (init)
-    → 创建 NSXPCConnection(machServiceName: "com.qi-xmu.mac-right-menu.command")
-    → 设置 exportedObject = ExtensionXPC 实例
-    → 设置 invalidationHandler（检测 Container 死亡）
-    → connection.resume()
-    → 获取 remoteObjectProxy → 可调用 executeCommand
+    → cachedConfig = .default（临时值，连接前兜底）
+    → rpcClient.setConfigChangeHandler { 更新 cachedConfig（NSLock） }
+    → RPCClient.connect()
+    → NWConnection(to: 127.0.0.1:57421, using: .tcp)
+    → conn.start()
+    → 状态变为 .ready
+        → receiveLoop() 开始
+        → fetchConfig() → getConfig 请求 → Container 回当前配置 → 刷新 cachedConfig
+        → 可调用 executeCommand
+    → 若 Container 未运行，2 秒后自动重试（cachedConfig 暂留 .default）
 ```
 
 ### 2. 执行指令
@@ -163,167 +130,199 @@ Extension 被 Finder 唤醒 (init)
 ```
 用户右键 → handleMenuAction(sender, targetURL, selectedURLs)
     → 根据 tag 构造 CommandRequest
-    → remoteObjectProxy.executeCommand(command) { result in
-            logger.notice("Command \(result.success ? "succeeded" : "failed")")
-        }
-    （同步/异步均可，XPC 自动串行化调用）
+    → rpcClient.executeCommand(command) { result in
+          logger.notice("[RPC OK] ... → \(result.success ? "OK" : "FAIL")")
+      }
 ```
 
-### 3. 设置变更通知
+RPCClient 内部：
+1. 分配递增 id，记录 pending 回调
+2. `RPCRequest` 编码为 JSON + `\n`，通过 TCP 发送
+3. Container 的 `RPCServer.handleRequest` 收到后 dispatch
+4. Container 返回 `RPCResponse`，RPCClient 的 `receiveLoop` 匹配 id 调用回调
 
-```
-Container: 用户修改配置 → saveConfiguration()
-    → for connection in listener.connections:
-          connection.remoteObjectProxy.settingsDidChange()
-
-Extension: settingsDidChange() 回调
-    → 标记下次 menu(for:) 重新读配置
-```
-
-### 4. Container 关机
-
-```
-Container: 用户退出 / 系统关机
-    → for connection in listener.connections:
-          connection.remoteObjectProxy.shutdownImminent()
-    → listener.invalidate()
-
-Extension: shutdownImminent() 回调
-    → 停止 heartbeat（如有）
-    → FIFinderSyncController.default().directoryURLs = []
-```
-
-### 5. 心跳（连接即心跳）
-
-```
-Extension:
-    invalidationHandler = {
-        // Container App 退出 / hung / 崩溃
-        logger.warning("Container connection lost")
-        connection.invalidate()
-        // Finder 下次调用 menu(for:) 时重建连接
-    }
-```
-
-不需要 Timer，不需要文件 I/O。NSXPCConnection 的 invalidation 由内核级 mach port 管理，即时可靠。
-
-### 6. Container 不在时 Extension 被唤醒
+### 3. Container 不在时 Extension 被唤醒
 
 ```
 Finder 唤醒 Extension (init)
-    → 创建 NSXPCConnection → resume()
-    → 连接失败（Container 未运行）
-        → invalidationHandler 触发
-        → 尝试 NSWorkspace.openApplication 启动 Container
-        → 等待 Container 启动 + XPC 连接建立
-        → 挂起 5s，重试
+    → RPCClient.connect()
+    → NWConnection 状态 .failed（Container 未运行）
+        → resetAndRetry()
+        → 2 秒后重试 connect()
+    → 用户右键时若仍未连上
+        → executeCommand 返回 false，日志打印 [RPC DOWN]
 ```
 
----
+> 当前未实现"自动拉起 Container"。Extension 静默重试，直到 Container 启动。
 
-## Container App 注册 Mach Service
+### 4. 心跳保活（ping / pong）
 
-需要在 `mac-right-menu/Info.plist` 或 entitlements 中注册 XPC service：
+TCP loopback 上，如果 Container 进程崩溃，`NWConnection` 不一定立即报 `.failed`（半开连接），导致 Extension 把命令发到一个已死的对端、静默丢弃。心跳机制让 Extension 在有限时间内感知 Container 死亡并重连。
 
-```xml
-<!-- Info.plist -->
-<key>NSServices</key>
-<array>
-    <dict>
-        <key>NSMachServiceName</key>
-        <string>com.qi-xmu.mac-right-menu.command</string>
-    </dict>
-</array>
+```
+Extension（.ready 后）
+    → startHeartbeat()：DispatchSource 定时器，每 heartbeatInterval(15s) 触发
+    → 每次 tick：consecutiveMisses += 1，发 ping（meta = { pid, version }）
+    → 收到 pong：pending 回调清零 consecutiveMisses
+    → consecutiveMisses >= heartbeatMaxMisses(3)（≈45s 无响应）
+        → 判定 Container 死亡 → resetAndRetry()（断开 + 2s 重连）
+
+Container
+    → handleRequest 收到 method == "ping"
+        → 读 req.meta（pid/version）→ onHeartbeat 闭包（MainActor）
+            → AppState 更新 isExtensionConnected / connectedExtPID / connectedExtVersion / lastHeartbeatAt
+        → 回 pong（RPCResponse result.success = true）
 ```
 
-或者通过代码注册匿名 listener（无需 Info.plist）：
+**ping / pong 报文**：
 
-```swift
-let listener = NSXPCListener.anonymous()
-listener.activate()
-// Extension 通过 endpoint 连接
+```json
+// ping（Extension → Container，meta 携带元数据）
+{ "jsonrpc": "2.0", "id": 5, "method": "ping", "params": null,
+  "meta": { "pid": "219", "version": "1.0" } }
+// pong（Container → Extension）
+{ "jsonrpc": "2.0", "id": 5, "result": { "success": true, "errorDescription": null, "config": null }, "error": null }
 ```
 
-匿名 listener 不依赖 Info.plist，Extension 可通过 App Group 传递 endpoint（仅建立连接时一次）。
+**设计要点**：
+- **计数法超时**（而非 per-pending 定时器）：每发一次 ping 先自增 `consecutiveMisses`，pong 清零；达到阈值即重连。实现极简，无需为每个请求挂 Timer。
+- **方向单向**：只有 Ext → Con 的 ping；Container 不主动 ping Ext，仅在收到 ping 时被动刷新状态（不为每个连接加定时器）。
+- **ping 日志用 debug 级**：15 秒一次，notice 会刷屏；需要时 `log stream --debug` 才可见。
+- **元数据走 `req.meta`**：`RPCRequest` 新增可选 `meta: [String:String]?`（默认 nil，向后兼容），ping 时填 pid/version，其他 method 忽略。
+- **UI 可见**：Container 设置页区分两个状态 —— "Extension Registered"（pluginkit 系统层启用）和 "Extension Connected"（RPC 心跳层连接）。收到心跳后后者显示 Connected + Ext PID + 版本 + 最后心跳相对时间（每秒刷新）。
 
----
+## 与配置同步的关系
 
-## 与现有代码的衔接
+配置（`MenuConfiguration`）的**持久化**仍是各自独立的 `UserDefaults.standard`（App Group 共享 UserDefaults 已实测否决，见 `storage-migration.md`）。两个进程的 store 互不可见，所以配置同步完全走 RPC，分两条通道：
 
-### 可以删除的
+### 1. 连接时拉取（getConfig，Extension → Container）
 
-| 文件/代码 | 说明 |
-|-----------|------|
-| `Shared/IPC/Heartbeat.swift` | 整文件删除 |
-| `SharedUserDefaults.pendingCommand` | 改为 XPC 传输 |
-| `Constants.Notifications.executeCommand` | DNC 通知 |
-| `Constants.Notifications.shutdownRequested` | DNC 通知 |
-| `Constants.Defaults.heartbeat*` | heartbeat key |
-| `Constants.Defaults.shutdownFlagKey` | shutdown flag |
-| `SettingsSync.post*` (部分) | executeCommand 通知不再需要 |
-| `FinderSync.startHeartbeat()` | Timer 删除 |
-| `AppState.startHeartbeat()` | Timer 删除 |
-| `AppState.isExtensionActive` | 换为 connection.isValid |
+Extension 的 RPCClient 一旦进入 `.ready`，立即发 `getConfig` 请求向 Container 索取当前配置。这是**首次加载**的唯一可靠来源 —— Extension 不再读自己的 store（那个 store 拿不到 Container 的写入）。
 
-### 保留的
+```
+Extension: RPCClient.connect() → NWConnection .ready
+    → fetchConfig()  → 发 getConfig 请求（有 id）
+Container: handleRequest case "getConfig"
+    → 返回 RPCResponse.result.config = 当前 configuration
+Extension: pending 回调 → onConfigChange(config) → 更新 cachedConfig（NSLock）
+```
 
-| 代码 | 说明 |
+### 2. 变更时推送（configDidChange，Container → Extension）
+
+Container 修改配置后主动广播，让**已连接**的 Extension 实时刷新：
+
+```
+Container: 用户修改配置
+    → SharedUserDefaults.menuConfiguration = config（写自己的 store）
+    → saveConfiguration() → rpcServer.broadcastConfig(config)
+        → 向所有已连接 Extension 发 configDidChange notification（payload = 完整配置）
+Extension: RPCClient 收到 configDidChange
+    → onConfigChange 回调 → 用 NSLock 保护地更新 cachedConfig
+```
+
+两条通道共用同一个 `onConfigChange` 处理器，`menu(for:)` 加锁读 `cachedConfig` 即可。
+
+### configDidChange notification（Container → Extension）
+
+JSON-RPC notification（无 `id`，无需响应），payload 携带完整 `MenuConfiguration`（因为各进程 store 独立，必须 in-band 传输）：
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "configDidChange",
+  "params": {
+    "isEnabled": true,
+    "appItems": [...],
+    "actionItems": [...],
+    "newFileTemplates": [...]
+  }
+}
+```
+
+### getConfig 请求/响应（Extension → Container）
+
+```json
+// 请求
+{ "jsonrpc": "2.0", "id": 1, "method": "getConfig" }
+// 响应（result.config 携带完整配置）
+{ "jsonrpc": "2.0", "id": 1, "result": { "success": true, "errorDescription": null, "config": { ... } } }
+```
+
+RPCClient 的 `handleResponse` 先尝试按 notification 形态解码（有 `method` 无 `id`），命中则触发 config 回调；否则按 response（有 `id`）匹配 pending 请求。getConfig 的响应复用 `RPCResult`，新增可选 `config` 字段。
+
+> **边界**：Extension 启动时（RPCClient 尚未连上 Container）`cachedConfig` 是 `.default`。一旦连接建立，getConfig 立即把它刷新为 Container 的真实配置。之后 Container 运行期间的变更由 configDidChange 实时推送。
+
+## 调试
+
+每条日志以 **`[Con]`/`[Ext]`** 前缀标明来源进程，无需过滤 subsystem 即可一眼区分。共享代码（`RPCSession`/`SharedUserDefaults`）的 logger 用 `Constants.currentBundleID`（运行时 `Bundle.main.bundleIdentifier`）作 subsystem，确保 Con 进程的日志归 Con、Ext 进程的归 Ext（避免共享代码把 Ext 日志误标成 Con）。
+
+| 日志点 | 标签 | 级别 | 位置 |
+|---|---|---|---|
+| Extension 发起调用 | `[Ext][RPC CALL]` | notice | `RPCClient.executeCommand` / `fetchConfig` |
+| 任意发送（两端共享） | `[Con/Ext][RPC SEND]` | debug | `sendJSON` |
+| 任意接收（两端共享） | `[Con/Ext][RPC RECV]` | debug | `RPCServer.handleRequest` / `RPCClient.handleResponse` |
+| Con 监听就绪 | `[Con] RPCServer: listening on ...` | notice | `RPCServer.start` |
+| Con 收到 Ext 连接 | `[Con] RPCServer: connection from pid` | notice | `RPCServer.handle` |
+| Con 派发请求 | `[Con] RPCServer: dispatch ...` | notice | `RPCServer.handleRequest` |
+| Con 广播/跳过 configDidChange | `[Con] RPCServer: broadcast/skipped configDidChange` | notice | `RPCServer.broadcastConfig` |
+| Ext 连上 Con | `[Ext] RPCClient: connected to ...` | notice | `RPCClient.connect` |
+| Ext getConfig 拉到配置 | `[Ext] RPCClient: getConfig received config` | notice | `RPCClient.fetchConfig` 回调 |
+| Ext 收到 configDidChange | `[Ext] RPCClient: received configDidChange` | notice | `RPCClient.handleResponse` |
+| Ext 心跳启动 | `[Ext] RPCClient: heartbeat started ...` | notice | `RPCClient.startHeartbeat` |
+| Ext 发 ping | `[Ext][RPC CALL] id=N method=ping misses=N` | debug | `RPCClient.sendHeartbeat` |
+| Ext 心跳超时重连 | `[Ext] RPCClient: N heartbeats unanswered — ... reconnecting` | error | `RPCClient.sendHeartbeat` |
+| Ext 配置写入缓存 | `[Ext] Config applied:` | notice | `FinderSync`（onConfigChange 回调） |
+| Con 收到指令并派发执行 | `[Con][IPC RECEIVED]` | notice | `AppState.executeCommand`（commandLogOnly 短路路径） |
+| Con 检测到 Ext 注册 | `[Con] Extension registered via pluginkit (system-level; not yet RPC-connected)` | notice | `AppState.checkExtensionRegistration` |
+
+> 注：`[IPC RECEIVED]` 标签沿用 XPC 时代命名，与 `[RPC RECV]` 含义重叠；计划改名为 `[RPC RECV→DISPATCH]` 以统一命名（见 `NEXT.md`）。
+
+### 日志过滤
+
+按内容过滤（同时看两端，推荐）：
+
+```bash
+log stream --debug --predicate 'eventMessage CONTAINS "[Con]" OR eventMessage CONTAINS "[Ext]"'
+```
+
+按进程 subsystem 过滤（只看某一端）：
+
+```bash
+# 只看 Container
+log stream --debug --predicate 'subsystem == "com.qi-xmu.mac-right-menu"'
+# 只看 Extension
+log stream --debug --predicate 'subsystem == "com.qi-xmu.mac-right-menu.FinderExtension"'
+```
+
+## 涉及文件
+
+| 文件 | 职责 |
 |------|------|
-| `SettingsSync.postSettingsChanged()` | 降级：发 DNC 通知 → 改为走 XPC `settingsDidChange()` |
-| `SharedUserDefaults.menuConfiguration` | 配置数据仍在 App Group |
-| `Constants.Notifications.settingsChanged` | 如果 DNC 全移除则删，否则保留兼容 |
-
-### 需要新增的
-
-| 文件 | 说明 |
-|------|------|
-| `Shared/XPC/XPCProtocol.swift` | 协议定义 |
-| `Shared/XPC/CommandRequest+NSSecureCoding.swift` | NSSecureCoding 实现 |
-| `Shared/XPC/CommandResult.swift` | 返回结果类型 |
-| `Container/XPCListener.swift` | Container 侧 listener 管理 |
-| `Extension/XPCConnection.swift` | Extension 侧连接管理 |
-
----
+| `Shared/XPC/RPCSession.swift` | `RPCServer` + `RPCClient` + JSON-RPC wire types |
+| `Shared/Constants.swift` | `rpcHost` / `rpcPort` 常量 |
+| `Shared/Models/CommandRequest.swift` | 指令模型（`Action` enum 的 rawValue 用于 RPC params） |
+| `Shared/XPC/CommandResult.swift` | 返回结果模型 |
+| `mac-right-menu/ViewModels/AppState.swift` | Container 持有 `RPCServer`，实现 `executeCommand` |
+| `FinderExtension/FinderSync.swift` | Extension 持有 `RPCClient` |
+| `FinderExtension/MenuActionHandler.swift` | 菜单点击 → `rpcClient.executeCommand` |
 
 ## 风险与缓解
 
 | 风险 | 等级 | 缓解 |
 |------|------|------|
-| Container 未运行，Extension 连接失败 | 中 | 自动启动 Container App，重试连接 |
-| XPC 调用阻塞 menu(for:) 返回 | 低 | executeCommand 异步调用（不等待 result） |
-| NSSecureCoding 序列化错误 | 低 | CommandRequest 字段简单，单元测试覆盖 |
-| 匿名 listener 重建时 endpoint 失效 | 低 | Extension 重连逻辑 + App Group 传递新 endpoint |
-
----
+| Container 未运行/崩溃，Extension 连接失败 | 中 | RPCClient 内置 2 秒自动重连；**心跳 ping/pong 在 ≤45 秒（3 × 15s）内感知半开连接并触发重连**；命令丢弃并记录 [RPC DOWN] |
+| 固定端口 57421 被占用 | 低 | 当前未处理；可后续改为动态端口 + 文件传递 |
+| TCP 传输无加密 | 低 | loopback 流量不出本机，风险可接受 |
+| Container 改配置时 Extension 未连上 → 推送丢失 | 低 | Extension 下次 RPC 连接 `.ready` 时经 `getConfig` 拉取最新配置；连接前 `cachedConfig` 暂为 `.default` |
 
 ## 考虑点
 
-### DNC 是否完全移除？
+### 端口策略
 
-settingsChanged 当前通过 DNC 通知，替换为 XPC 调用后可以完全移除 DNC。但保留 DNC 作为 failsafe（Extension 接收 XPC 通知失败时兜底读取最新配置）也是一个选择。
+当前用固定端口 `57421`。若担心冲突，可改为：Container 启动时随机选端口，写入 App Group 文件，Extension 读文件获取端口。但这又依赖 App Group 文件 I/O（`DENY.md` 记录有 TCC 风险），目前固定端口更简单可靠。
 
-### 匿名 Listener vs 命名 Service
+### 性能
 
-匿名 listener 不依赖 Info.plist，更灵活。Extension 每次被唤醒时读取 App Group 中的 listener endpoint 即可连接。
-
-```swift
-// Container 启动时
-let listener = NSXPCListener.anonymous()
-listener.activate()
-let endpoint = listener.endpoint
-// 将 endpoint 序列化存储到 App Group
-let data = NSKeyedArchiver.archivedData(withRootObject: endpoint)
-SharedUserDefaults.suite.set(data, forKey: "xpcEndpoint")
-
-// Extension 连接时
-let data = SharedUserDefaults.suite.data(forKey: "xpcEndpoint")
-let endpoint = NSKeyedUnarchiver.unarchiveObject(with: data) as! NSXPCListenerEndpoint
-let connection = NSXPCConnection(listenerEndpoint: endpoint)
-```
-
-一旦建立连接，后续 Extension 重连时 Container 可能已重建 listener，需要刷新 endpoint。
-
-### 线程模型
-
-- `executeCommand` 的调用可能不在主线程 → Container 侧实现需 `DispatchQueue.main.async` 处理 UI 相关操作
-- `settingsDidChange` / `shutdownImminent` 在 Extension 侧 → 需确保 `FIFinderSyncController` 调用在主线程
+- RPC 调用本身异步，不阻塞 Extension 的 `menu(for:)` 返回（菜单渲染与命令执行解耦）。
+- `executeCommand` 为 `async`，返回**真实执行结果**（`CommandResult`，含成功/失败 + `errorDescription`）。RPC 响应延迟到执行完成后才发送 —— 这是相对早期 "fire-and-forget" 行为的演进，使 Extension 能感知命令失败，且 Container 端 Execution Log 记录的结果与 Extension 收到的响应一致。
+- `.shell` 动作内部 `waitUntilExit()` 会同步阻塞 RPC 连接的处理协程（运行在 RPC 后台队列，**不阻塞主线程 / UI**）。期间 Extension 对应的 `executeCommand` 回调会等待。

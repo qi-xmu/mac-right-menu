@@ -70,12 +70,12 @@ Extension 读取 Bookmark Data
 ### 核心架构
 
 ```
-Finder → Extension(沙盒) → 收集用户意图 → 发指令 → Container App(无沙盒) → 操作文件 ✅
+Finder → Extension(沙盒) → 收集用户意图 → JSON-RPC over TCP → Container App(无沙盒) → 操作文件 ✅
 ```
 
 Extension 只负责两件事：
 1. 向 Finder 提供右键菜单（`menu(for:)` → `NSMenu`）
-2. 收集用户点击意图（操作类型 + 文件路径）→ 通过通信协议发给 Container
+2. 收集用户点击意图（操作类型 + 文件路径）→ 通过 JSON-RPC 发给 Container
 
 Container App 负责所有文件操作，无沙盒限制，也无需 TCC 权限弹窗。
 
@@ -83,17 +83,31 @@ Container App 负责所有文件操作，无沙盒限制，也无需 TCC 权限�
 1. macOS 已知 bug：沙盒中 `startAccessingSecurityScopedResource()` 对 `selectedItemURLs()` 返回的 URL 返回 false
 2. `temporary-exception` 方案触发多次 TCC 权限弹窗，且 MAS 上架必定被拒
 
+**IPC 机制选择：JSON-RPC over TCP**（详见 `communication-protocol.md` 与 `BUG1.md` 排查历程）。
+XPC 的 mach service / XPC Service / 匿名 listener + endpoint 三种方案均经实测不可行，最终改用 TCP loopback + JSON-RPC 2.0。
+
 ### 最终 Entitlements
 
 ```xml
 <!-- Container App（无沙盒） -->
 com.apple.security.application-groups = true
+<!-- 无需 network.server：非沙盒 App 可自由监听 TCP -->
 
-<!-- Finder Extension（最简化沙盒） -->
+<!-- Finder Extension（沙盒） -->
 com.apple.security.app-sandbox = true
 com.apple.security.finder.sync = true
 com.apple.security.application-groups = true
+com.apple.security.network.client = true    <!-- 出站 TCP 连接到 Container -->
 ```
+
+### 沙盒网络 Entitlement 说明
+
+| Entitlement | 作用 | 配置端 |
+|---|---|---|
+| `com.apple.security.network.client` | 允许沙盒 App 发起出站网络连接（含 loopback） | Extension（连 Container） |
+| （无） | 非沙盒 App 默认可监听任意端口 | Container（监听 57421） |
+
+> 用 `127.0.0.1` 而非 `localhost`：沙盒内 `/etc/hosts` 解析可能失败。
 
 ## 参考
 
