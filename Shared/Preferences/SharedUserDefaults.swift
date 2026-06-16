@@ -54,6 +54,29 @@ public enum SharedUserDefaults {
         set { defaults.set(newValue, forKey: Constants.Defaults.commandLogOnlyKey) }
     }
 
+    // MARK: - Debug Log Enabled
+
+    /// Whether the Debug Log window should record RPC/wake events. Off by
+    /// default so the bookkeeping is skipped entirely in normal use.
+    public static var debugLogEnabled: Bool {
+        get { defaults.bool(forKey: Constants.Defaults.debugLogEnabledKey) }
+        set { defaults.set(newValue, forKey: Constants.Defaults.debugLogEnabledKey) }
+    }
+
+    // MARK: - Execution Log Enabled
+
+    /// Whether the Execution Log window should record command executions.
+    /// On by default since this is the primary user-facing activity log.
+    public static var executionLogEnabled: Bool {
+        get {
+            if defaults.object(forKey: Constants.Defaults.executionLogEnabledKey) == nil {
+                return true // default on
+            }
+            return defaults.bool(forKey: Constants.Defaults.executionLogEnabledKey)
+        }
+        set { defaults.set(newValue, forKey: Constants.Defaults.executionLogEnabledKey) }
+    }
+
     // MARK: - Extension Preferences
 
     private static let extensionPrefsKey = "extensionPreferences"

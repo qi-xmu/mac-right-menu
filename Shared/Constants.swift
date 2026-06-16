@@ -50,6 +50,8 @@ public enum Constants {
         public static let menuConfigKey = "menuConfiguration"
         public static let isExtensionEnabledKey = "isExtensionEnabled"
         public static let commandLogOnlyKey = "commandLogOnly"
+        public static let debugLogEnabledKey = "debugLogEnabled"
+        public static let executionLogEnabledKey = "executionLogEnabled"
     }
 
     public enum TagBase: Int {
@@ -58,7 +60,6 @@ public enum Constants {
         case copyPath = 2000
         case copyFileName = 2001
         case toggleHidden = 2002
-        case openParent = 2003
         case shell = 4000       // 4000–4999: shell index
     }
 }
