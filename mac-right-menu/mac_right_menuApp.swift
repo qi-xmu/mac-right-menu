@@ -22,6 +22,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 name: .openSettingsWindow,
                 object: nil
             )
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                NSApp.activate(ignoringOtherApps: true)
+                NSApp.windows.first(where: {
+                    $0.title.contains("mac-right-menu")
+                })?.makeKeyAndOrderFront(nil)
+            }
         }
     }
 }
@@ -42,20 +48,31 @@ struct MacRightMenuApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            Button("Open Settings…") {
-                NSApp.activate(ignoringOtherApps: true)
+            Button("Open Settings") {
                 if let window = NSApp.windows.first(where: {
                     $0.title.contains("mac-right-menu")
                 }) {
+                    NSApp.activate(ignoringOtherApps: true)
                     window.makeKeyAndOrderFront(self)
                 } else {
                     openWindow(id: "settings")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        NSApp.activate(ignoringOtherApps: true)
+                        NSApp.windows.first(where: {
+                            $0.title.contains("mac-right-menu")
+                        })?.makeKeyAndOrderFront(nil)
+                    }
                 }
             }
             .keyboardShortcut(",")
-            Button("Show Execution Log") {
-                NSApp.activate(ignoringOtherApps: true)
+            Button("Execution Log") {
                 openWindow(id: "log")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    NSApp.activate(ignoringOtherApps: true)
+                    NSApp.windows.first(where: {
+                        $0.title.contains("Execution Log")
+                    })?.makeKeyAndOrderFront(nil)
+                }
             }.keyboardShortcut("l")
             Divider()
             Button("Quit") {

@@ -10,6 +10,10 @@ struct SettingsView: View {
                 .tabItem {
                     Label("General", systemImage: "gearshape")
                 }
+            ExtensionsSettingsTab()
+                .tabItem {
+                    Label("Extensions", systemImage: "puzzlepiece.extension")
+                }
             AppsSettingsTab()
                 .tabItem {
                     Label("Apps", systemImage: "square.grid.2x2")

@@ -26,11 +26,25 @@ public enum Constants {
     public static let rpcHost = "127.0.0.1"
     public static let rpcPort: UInt16 = 57421
 
+    /// Lock file written by the Container to indicate it is running.
+    /// Extension checks this before attempting to launch a second instance.
+    public static var containerLockURL: URL? {
+        FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: appGroupID
+        )?.appendingPathComponent("container.lock")
+    }
+
     /// Heartbeat: the Extension sends a `ping` every `heartbeatInterval`
     /// seconds. If `heartbeatMaxMisses` consecutive pings go unanswered, the
     /// Extension treats the Container as dead and reconnects.
     public static let heartbeatInterval: TimeInterval = 15
     public static let heartbeatMaxMisses: Int = 3
+
+    /// All known extensions bundled with this app. Used to populate the
+    /// extension list in settings and for auto-launch on Container startup.
+    public static let knownExtensions: [(bundleID: String, displayName: String)] = [
+        (extensionBundleID, "Finder Extension"),
+    ]
 
     public enum Defaults {
         public static let menuConfigKey = "menuConfiguration"

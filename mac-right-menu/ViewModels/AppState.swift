@@ -11,27 +11,17 @@ class AppState: ObservableObject {
         }
     }
 
-    /// Whether the FinderExtension is registered/enabled with the system
-    /// (detected via pluginkit). This is a system-level install/enable state,
-    /// independent of whether an RPC connection is currently live.
-    @Published var isExtensionRegistered: Bool = false
-
-    /// Whether the FinderExtension is currently connected over RPC (refreshed
-    /// by heartbeat). Distinct from `isExtensionRegistered`: the extension can
-    /// be enabled but not yet running (no right-click triggered it), or running
-    /// but the connection dropped.
-    @Published var isExtensionConnected: Bool = false
-    /// PID of the connected Extension process (nil if not connected via RPC).
-    @Published var connectedExtPID: Int?
-    /// Bundle version reported by the connected Extension.
-    @Published var connectedExtVersion: String?
-    /// Timestamp of the last heartbeat received from the Extension.
-    @Published var lastHeartbeatAt: Date?
+    /// All known extensions with their runtime state and user preferences.
+    @Published var extensions: [ExtensionInfo] = []
 
     /// In-memory record of every command execution (newest appended at the end).
     /// Cleared on relaunch; capped at `maxLogEntries`.
     @Published private(set) var executionLog: [ExecutionLogEntry] = []
     private let maxLogEntries = 500
+
+    /// File descriptor for the flock()-based single-instance guard.
+    /// Kept open for the process lifetime; closing it releases the lock.
+    private let lockFileDescriptor: Int32
 
     private lazy var rpcServer: RPCServer = {
         let server = RPCServer(
@@ -39,22 +29,21 @@ class AppState: ObservableObject {
                 guard let self else {
                     return CommandResult(success: false, errorDescription: "AppState released")
                 }
-                // Real execution result flows back to the Extension as the RPC response.
                 return await self.executeCommand(command)
             },
             getConfig: { [weak self] in
-                // Hand the Extension the current config on connect. AppState is
-                // @MainActor, so this runs on the main thread.
                 self?.configuration ?? SharedUserDefaults.menuConfiguration
             },
             onHeartbeat: { [weak self] meta in
-                // A heartbeat means the Extension is live and connected over RPC.
-                // AppState is @MainActor, so this runs on the main thread.
                 guard let self else { return }
-                self.isExtensionConnected = true
-                self.connectedExtPID = meta?["pid"].flatMap(Int.init)
-                self.connectedExtVersion = meta?["version"]
-                self.lastHeartbeatAt = Date()
+                let pid = meta?["pid"].flatMap(Int.init)
+                let version = meta?["version"]
+                if let index = self.extensions.firstIndex(where: { $0.bundleID == Constants.extensionBundleID }) {
+                    self.extensions[index].isConnected = true
+                    self.extensions[index].connectedPID = pid
+                    self.extensions[index].connectedVersion = version
+                    self.extensions[index].lastHeartbeatAt = Date()
+                }
             }
         )
         server.start()
@@ -62,26 +51,100 @@ class AppState: ObservableObject {
     }()
 
     init() {
+        // Fast path: check via NSRunningApplication.
+        let existing = NSRunningApplication.runningApplications(
+            withBundleIdentifier: Constants.mainAppBundleID
+        )
+        if existing.count > 1 {
+            logger.warning("[Con] Another Container already running — exiting")
+            self.lockFileDescriptor = -1
+            exit(0)
+        }
+
+        // Atomic path: flock() prevents race conditions where two instances
+        // start simultaneously and both pass the NSRunningApplication check.
+        let fd = Self.acquireInstanceLock()
+        self.lockFileDescriptor = fd
+        if fd < 0 {
+            logger.warning("[Con] Could not acquire instance lock — exiting")
+            exit(0)
+        }
+
         self.configuration = SharedUserDefaults.menuConfiguration
+        loadExtensions()
+        writeLockFile()
         _ = rpcServer
         checkExtensionRegistration()
+        autoLaunchExtensions()
+    }
+
+    // MARK: - Extension Management
+
+    private func loadExtensions() {
+        extensions = Constants.knownExtensions.map { ext in
+            var info = ExtensionInfo(
+                bundleID: ext.bundleID,
+                displayName: ext.displayName,
+                autoLaunch: SharedUserDefaults.extensionAutoLaunch(bundleID: ext.bundleID)
+            )
+            return info
+        }
+    }
+
+    /// Auto-launch extensions that have autoLaunch enabled.
+    private func autoLaunchExtensions() {
+        let toLaunch = extensions.filter { $0.autoLaunch && $0.isRegistered }
+        guard !toLaunch.isEmpty else { return }
+        for ext in toLaunch {
+            logger.notice("[Con] Auto-launching extension: \(ext.displayName, privacy: .public)")
+            launchExtension(bundleID: ext.bundleID)
+        }
+    }
+
+    /// Launch an extension by bundleID using NSWorkspace or open -b fallback.
+    private func launchExtension(bundleID: String) {
+        if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
+            let config = NSWorkspace.OpenConfiguration()
+            config.activates = false
+            NSWorkspace.shared.openApplication(at: appURL, configuration: config) { _, error in
+                if let error {
+                    logger.error("[Con] Extension launch failed: \(error.localizedDescription, privacy: .public)")
+                }
+            }
+            return
+        }
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        task.arguments = ["-b", bundleID, "--background"]
+        do {
+            try task.run()
+        } catch {
+            logger.error("[Con] open -b extension failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    func setAutoLaunch(bundleID: String, enabled: Bool) {
+        if let index = extensions.firstIndex(where: { $0.bundleID == bundleID }) {
+            extensions[index].autoLaunch = enabled
+            SharedUserDefaults.setExtensionAutoLaunch(bundleID: bundleID, enabled: enabled)
+        }
     }
 
     /// Check via pluginkit whether the extension is registered with the system.
-    /// This is a system-level install/enable check, independent of the live RPC
-    /// connection: the extension can be enabled but not yet running (Finder
-    /// hasn't triggered a right-click).
     private func checkExtensionRegistration() {
         Task {
             let installed = await Self.isExtensionRegistered()
-            if installed && !isExtensionRegistered {
-                isExtensionRegistered = true
-                logger.notice("[Con] Extension registered via pluginkit (system-level; not yet RPC-connected)")
+            if installed {
+                if let index = extensions.firstIndex(where: { $0.bundleID == Constants.extensionBundleID }) {
+                    if !extensions[index].isRegistered {
+                        extensions[index].isRegistered = true
+                        logger.notice("[Con] Extension registered via pluginkit")
+                    }
+                }
             }
         }
     }
 
-    /// Run `pluginkit -m` to check if the FinderExtension is registered.
     nonisolated private static func isExtensionRegistered() async -> Bool {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .utility).async {
@@ -116,6 +179,7 @@ class AppState: ObservableObject {
     }
 
     func shutdownExtensions() {
+        removeLockFile()
         rpcServer.broadcastShutdown()
         // Brief delay so connected Extensions can receive the shutdown
         // notification before the listener is torn down.
@@ -126,6 +190,35 @@ class AppState: ObservableObject {
 
     func clearLog() {
         executionLog.removeAll()
+    }
+
+    // MARK: - Lock file (single-instance guard)
+
+    /// Try to acquire an exclusive flock on `<AppGroup>/container.lock`.
+    /// Returns the file descriptor on success, -1 on failure.
+    /// The fd must be kept open for the process lifetime.
+    nonisolated private static func acquireInstanceLock() -> Int32 {
+        guard let url = Constants.containerLockURL else { return -1 }
+        let dir = url.deletingLastPathComponent()
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let fd = open(url.path, O_CREAT | O_WRONLY, 0o644)
+        guard fd >= 0 else { return -1 }
+        if flock(fd, LOCK_EX | LOCK_NB) != 0 {
+            close(fd)
+            return -1
+        }
+        return fd
+    }
+
+    private func writeLockFile() {
+        guard let url = Constants.containerLockURL else { return }
+        let pid = "\(ProcessInfo.processInfo.processIdentifier)"
+        try? pid.write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    private func removeLockFile() {
+        guard let url = Constants.containerLockURL else { return }
+        try? FileManager.default.removeItem(at: url)
     }
 
     // MARK: - Convenience accessors

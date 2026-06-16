@@ -602,6 +602,12 @@ public final class RPCClient: @unchecked Sendable {
         containerLaunchRequested = true
         lock.unlock()
 
+        // Check if the Container is already running via lock file.
+        if isContainerProcessAlive() {
+            logger.notice("[Ext] RPCClient: Container already running (lock file found) — skipping launch")
+            return
+        }
+
         let bundleID = Constants.mainAppBundleID
         logger.notice("[Ext] RPCClient: Container not reachable — requesting launch (\(bundleID, privacy: .public))")
 
@@ -651,6 +657,19 @@ public final class RPCClient: @unchecked Sendable {
         DispatchQueue.global().asyncAfter(deadline: .now() + Self.containerLaunchCooldown) { [weak self] in
             self?.lock.lock(); self?.containerLaunchRequested = false; self?.lock.unlock()
         }
+    }
+
+    /// Check if the Container process is alive by reading its PID from the lock
+    /// file and sending signal 0 ( existence check only ).
+    private func isContainerProcessAlive() -> Bool {
+        guard let url = Constants.containerLockURL,
+              let data = try? Data(contentsOf: url),
+              let pidStr = String(data: data, encoding: .utf8)?
+                  .trimmingCharacters(in: .whitespacesAndNewlines),
+              let pid = Int32(pidStr)
+        else { return false }
+        // kill -0: check if process exists (no signal sent)
+        return kill(pid, 0) == 0
     }
 
     private func scheduleRetry() {

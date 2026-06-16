@@ -54,6 +54,22 @@ public enum SharedUserDefaults {
         set { defaults.set(newValue, forKey: Constants.Defaults.commandLogOnlyKey) }
     }
 
+    // MARK: - Extension Preferences
+
+    private static let extensionPrefsKey = "extensionPreferences"
+
+    /// Per-extension user preferences (autoLaunch, etc.), keyed by bundleID.
+    public static func extensionAutoLaunch(bundleID: String) -> Bool {
+        let prefs = defaults.dictionary(forKey: extensionPrefsKey) as? [String: Bool] ?? [:]
+        return prefs[bundleID] ?? true
+    }
+
+    public static func setExtensionAutoLaunch(bundleID: String, enabled: Bool) {
+        var prefs = defaults.dictionary(forKey: extensionPrefsKey) as? [String: Bool] ?? [:]
+        prefs[bundleID] = enabled
+        defaults.set(prefs, forKey: extensionPrefsKey)
+    }
+
     public static func forceReload() {
         defaults.synchronize()
     }
