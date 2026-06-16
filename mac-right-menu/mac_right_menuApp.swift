@@ -74,6 +74,17 @@ struct MacRightMenuApp: App {
                     })?.makeKeyAndOrderFront(nil)
                 }
             }.keyboardShortcut("l")
+            if appState.debugLogEnabled {
+                Button("Debug Log") {
+                    openWindow(id: "debug-log")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        NSApp.activate(ignoringOtherApps: true)
+                        NSApp.windows.first(where: {
+                            $0.title.contains("Debug Log")
+                        })?.makeKeyAndOrderFront(nil)
+                    }
+                }.keyboardShortcut("d", modifiers: [.command, .shift])
+            }
             Divider()
             Button("Quit") {
                 appState.shutdownExtensions()
@@ -103,6 +114,12 @@ struct MacRightMenuApp: App {
 
         Window("Execution Log", id: "log") {
             ExecutionLogView()
+                .environmentObject(appState)
+        }
+        .windowResizability(.contentMinSize)
+
+        Window("Debug Log", id: "debug-log") {
+            DebugLogView()
                 .environmentObject(appState)
         }
         .windowResizability(.contentMinSize)

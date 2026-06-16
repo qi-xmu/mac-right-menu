@@ -16,12 +16,24 @@ struct ActionsSettingsTab: View {
                         .foregroundStyle(.secondary)
 
                     VStack(alignment: .leading, spacing: 10) {
-                        ForEach(appState.actionItems) { item in
-                            HStack {
+                        // `.newFile` is excluded here — its master switch lives
+                        // in the File tab header (it gates the whole New File
+                        // section, not an individual row).
+                        ForEach(appState.actionItems.filter { $0.actionType != .newFile }) { item in
+                            HStack(alignment: .top) {
                                 Image(systemName: item.iconName ?? "gearshape")
                                     .frame(width: 20)
-                                    .foregroundColor(.accentColor)
-                                Text(item.title)
+                                    .foregroundStyle(.secondary)
+                                // Title + description, so each row is
+                                // self-explanatory (the separate "About Actions"
+                                // section was removed and folded in here).
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(item.title)
+                                        .fontWeight(.medium)
+                                    Text(item.actionType.localizedDescription)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
                                 Spacer()
                                 Toggle("", isOn: Binding(
                                     get: { item.isEnabled },
@@ -32,45 +44,16 @@ struct ActionsSettingsTab: View {
                                         }
                                     }
                                 ))
+                                .toggleStyle(.switch)
+                                .controlSize(.mini)
                             }
                         }
                     }
                 }
-
-                Divider()
-
-                // MARK: - Section: Info
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("About Actions")
-                        .font(.headline)
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        actionInfoRow(icon: "doc.badge.plus", title: "New File", description: "Create a new file from templates")
-                        actionInfoRow(icon: "doc.on.clipboard", title: "Copy Path", description: "Copy the full file path to clipboard")
-                        actionInfoRow(icon: "doc.on.clipboard", title: "Copy File Name", description: "Copy only the file name to clipboard")
-                        actionInfoRow(icon: "eye.slash", title: "Toggle Hidden", description: "Show or hide files in Finder")
-                        actionInfoRow(icon: "arrow.up.doc", title: "Open Parent Folder", description: "Open the parent directory in Finder")
-                    }
-                }
             }
             .padding(24)
-            .frame(maxWidth: 520, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(minWidth: 560, minHeight: 420)
-    }
-
-    private func actionInfoRow(icon: String, title: String, description: String) -> some View {
-        HStack(alignment: .top) {
-            Image(systemName: icon)
-                .frame(width: 20)
-                .foregroundColor(.secondary)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .fontWeight(.medium)
-                Text(description)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
     }
 }

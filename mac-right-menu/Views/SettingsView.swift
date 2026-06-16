@@ -14,6 +14,10 @@ struct SettingsView: View {
                 .tabItem {
                     Label("Extensions", systemImage: "puzzlepiece.extension")
                 }
+            NewFileSettingsTab()
+                .tabItem {
+                    Label("File", systemImage: "doc.badge.plus")
+                }
             AppsSettingsTab()
                 .tabItem {
                     Label("Apps", systemImage: "square.grid.2x2")
@@ -21,10 +25,6 @@ struct SettingsView: View {
             ActionsSettingsTab()
                 .tabItem {
                     Label("Actions", systemImage: "bolt")
-                }
-            NewFileSettingsTab()
-                .tabItem {
-                    Label("New File", systemImage: "doc.badge.plus")
                 }
         }
         .frame(minWidth: 560, minHeight: 420)

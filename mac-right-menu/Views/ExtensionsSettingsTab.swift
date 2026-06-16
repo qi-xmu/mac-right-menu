@@ -41,14 +41,27 @@ struct ExtensionsSettingsTab: View {
                 Text(ext.displayName)
                     .fontWeight(.medium)
                 Spacer()
+                // Manual re-probe of pluginkit status: lets the user refresh
+                // after enabling the extension in System Settings without
+                // relaunching the Container.
+                Button {
+                    appState.checkExtensionRegistration()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.title3)
+                }
+                .buttonStyle(.borderless)
+                .help("Refresh")
             }
 
             HStack(spacing: 16) {
+                // Registration status: Enabled (+ !) / Disabled (- =) /
+                // Not Installed (absent). Color mirrors the connected dot below.
                 HStack(spacing: 6) {
                     Circle()
-                        .fill(ext.isRegistered ? Color.green : Color.red)
+                        .fill(registrationColor(ext.registrationStatus))
                         .frame(width: 8, height: 8)
-                    Text(ext.isRegistered ? "Registered" : "Not Registered")
+                    Text(registrationLabel(ext.registrationStatus))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -60,6 +73,14 @@ struct ExtensionsSettingsTab: View {
                     Text(ext.isConnected ? "Connected" : "Disconnected")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                }
+            }
+
+            // Guidance: only offer the System Settings deep-link when the
+            // extension isn't usable yet. Enabled extensions need no action.
+            if ext.registrationStatus != .enabled {
+                Button("Open System Settings…") {
+                    appState.openSystemSettingsForExtensions()
                 }
             }
 
@@ -100,9 +121,28 @@ struct ExtensionsSettingsTab: View {
                 )
             )
             .toggleStyle(.switch)
+            .controlSize(.mini)
         }
         .padding(12)
         .background(Color.primary.opacity(0.05))
         .cornerRadius(8)
+    }
+
+    // MARK: - Registration status presentation
+
+    private func registrationColor(_ status: RegistrationStatus) -> Color {
+        switch status {
+        case .enabled:      return .green
+        case .disabled:     return .orange
+        case .notInstalled: return .red
+        }
+    }
+
+    private func registrationLabel(_ status: RegistrationStatus) -> String {
+        switch status {
+        case .enabled:      return "Enabled"
+        case .disabled:     return "Disabled"
+        case .notInstalled: return "Not Installed"
+        }
     }
 }
