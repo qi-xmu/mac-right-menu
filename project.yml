@@ -75,6 +75,18 @@ schemes:
     build:
       targets:
         mac-right-menu: all
+    run:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
+
+  FinderExtension:
+    build:
+      targets:
         FinderExtension: all
     run:
       config: Debug
