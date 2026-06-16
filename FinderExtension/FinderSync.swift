@@ -41,6 +41,14 @@ class FinderSyncExtension: FIFinderSync, @unchecked Sendable {
             logger.notice("[Ext] Config applied: enabled=\(newConfig.isEnabled) apps=\(newConfig.appItems.count) actions=[\(actions, privacy: .public)] templates=\(newConfig.newFileTemplates.count)")
         }
 
+        // Handle Container shutdown or max-retry exhaustion: exit the process.
+        rpcClient.setShutdownHandler {
+            logger.notice("[Ext] Shutting down (Container exit or max retries reached)")
+            DispatchQueue.main.async {
+                NSApplication.shared.terminate(nil)
+            }
+        }
+
         // Connect to the Container's JSON-RPC server. RPCClient handles retries
         // internally if the Container is not yet running. On .ready it auto-pulls
         // the current config via getConfig.

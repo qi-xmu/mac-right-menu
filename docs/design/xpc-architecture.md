@@ -1,7 +1,7 @@
 # IPC 通信架构（JSON-RPC over TCP）
 
 > 历史背景：本项目曾尝试 XPC（mach service / XPC Service / 匿名 listener + endpoint 文件）
-> 三种方案，均经实测排除。详见 `BUG1.md` 排查历程。最终采用 JSON-RPC over TCP。
+> 三种方案，均经实测排除。最终采用 JSON-RPC over TCP。
 
 ## 分层
 
@@ -16,7 +16,7 @@
 └───────────┬──────────────────────┬──────────────────┘
             │                      │
 ┌───────────▼──────────────────────▼──────────────────┐
-│  RPCSession.swift (Shared/XPC/)                      │
+│  RPCSession.swift (Shared/RPC/)                      │
 │  ─────                                               │
 │  RPCServer                    RPCClient              │
 │  • NWListener (TCP)           • NWConnection (TCP)   │
@@ -122,9 +122,9 @@ Extension
 
 | 文件 | 职责 |
 |------|------|
-| `Shared/XPC/RPCSession.swift` | IPC 通信模块（RPCServer + RPCClient + JSON-RPC wire types） |
-| `Shared/XPC/CommandResult.swift` | RPC 返回结果模型（`NSSecureCoding`，RPC 层用 `RPCResult` Codable 包装） |
-| `Shared/Models/CommandRequest.swift` | RPC 指令模型（`NSSecureCoding`，RPC 层用 `RPCParams` Codable 包装） |
+| `Shared/RPC/RPCSession.swift` | IPC 通信模块（RPCServer + RPCClient + JSON-RPC wire types） |
+| `Shared/RPC/CommandResult.swift` | RPC 返回结果模型（Codable struct，RPC 层用 `RPCResult` 包装） |
+| `Shared/Models/CommandRequest.swift` | RPC 指令模型（Codable struct，RPC 层用 `RPCParams` 包装） |
 | `Shared/Constants.swift` | `rpcHost` / `rpcPort` 常量 |
 | `mac-right-menu/ViewModels/AppState.swift` | Container 调用方（持有 `RPCServer`） |
 | `FinderExtension/FinderSync.swift` | Extension 调用方（持有 `RPCClient`） |

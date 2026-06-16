@@ -1,7 +1,7 @@
 # 通信协议设计
 
 > 日期: 2026-06-08（初版）
-> 更新: 2026-06-16（NSXPC → JSON-RPC over TCP；configDidChange 实时推送 + getConfig 连接时拉取；RPC 返回真实执行结果；心跳保活 ping/pong）
+> 更新: 2026-06-16（NSXPC → JSON-RPC over TCP；configDidChange 实时推送 + getConfig 连接时拉取；RPC 返回真实执行结果；心跳保活 ping/pong；连接失败自动拉起 Container）
 > 状态: 已实现
 
 ## 概述
@@ -10,14 +10,7 @@ Extension 和 Container App 之间采用 **JSON-RPC 2.0 over TCP loopback** 通�
 
 ### 为什么不用 XPC
 
-本项目先后实测了三种 XPC 方案，均不可行，最终改用 TCP。完整排查历程见 `BUG1.md`。
-
-| XPC 方案 | 排除原因（实测） |
-|----------|-----------------|
-| `NSXPCListener(machServiceName:)` + `NSMachServices` Info.plist | 非沙盒 Container 的 key 被 launchd 忽略，mach service 不注册（`launchctl print` 证实） |
-| `temporary-exception.mach-register.global-name` | 加了仍不注册（现代 macOS 废弃 runtime `bootstrap_register`） |
-| XPC Service（`serviceName`） | Extension 跨进程不可达（XPC Service 运行在宿主 App 进程空间内） |
-| 匿名 listener + endpoint 文件 | `NSXPCListenerEndpoint` 无法用 `NSKeyedArchiver` 序列化（mach port send right 是内核资源） |
+本项目先后实测了三种 XPC 方案（mach service / XPC Service / 匿名 listener + endpoint 文件），均不可行，最终改用 TCP。完整否决表与排查历程见 `docs/design/xpc-architecture.md`（单一权威出处，不在各文档重复维护）。
 
 ## 架构
 
@@ -141,19 +134,28 @@ RPCClient 内部：
 3. Container 的 `RPCServer.handleRequest` 收到后 dispatch
 4. Container 返回 `RPCResponse`，RPCClient 的 `receiveLoop` 匹配 id 调用回调
 
-### 3. Container 不在时 Extension 被唤醒
+### 3. Container 不在时 Extension 被唤醒（自动拉起）
 
 ```
 Finder 唤醒 Extension (init)
     → RPCClient.connect()
-    → NWConnection 状态 .failed（Container 未运行）
+    → NWConnection 状态 .failed（Container 未运行，Connection refused）
         → resetAndRetry()
-        → 2 秒后重试 connect()
-    → 用户右键时若仍未连上
-        → executeCommand 返回 false，日志打印 [RPC DOWN]
+            → launchContainerIfNeeded()
+                → NSWorkspace.urlForApplication(withBundleIdentifier:) 解析 Con URL
+                → NSWorkspace.openApplication(at:configuration:) 后台拉起（activates:false）
+                → containerLaunchRequested 置位节流（避免 2s 重试 spam）
+            → 2 秒后重试 connect()
+    → Con 启动 → RPCServer 监听就绪
+    → 下次重试 connect() 成功 → .ready → getConfig + 心跳
 ```
 
-> 当前未实现"自动拉起 Container"。Extension 静默重试，直到 Container 启动。
+**自动拉起要点**：
+- **时机**：仅连接失败（`resetAndRetry`）时触发，不在 init 主动拉起，避免 Ext 被 Finder 频繁唤醒时冗余拉起。
+- **后台拉起**：`NSWorkspace.OpenConfiguration.activates = false` 不抢焦点；Con 本身是 `LSUIElement`，无 Dock 图标、不弹窗口，只在菜单栏运行。
+- **节流**：`containerLaunchRequested` 标志位，一次失败周期内只请求一次拉起；`.ready` 连接成功后清零，下次掉线可再请求；拉起失败则 10 秒冷却后允许重试。
+- **依赖**：`urlForApplication(withBundleIdentifier:)` 需 Con 已在 LaunchServices 注册。若未注册（如全新环境），自动 fallback 到 `open -b <bundleID>` 通过命令行触发 LaunchServices 拉起。若两者均失败（app 未安装），日志报错，Ext 退化为纯重试直到用户手动启动 Con。
+- **沙盒**：FinderSync 扩展用 `NSWorkspace.openApplication` 启动指定 bundle-id 的 App 不触发额外 TCC（启动应用是公开能力，非文件访问）。
 
 ### 4. 心跳保活（ping / pong）
 
@@ -271,11 +273,12 @@ RPCClient 的 `handleResponse` 先尝试按 notification 形态解码（有 `met
 | Ext 心跳启动 | `[Ext] RPCClient: heartbeat started ...` | notice | `RPCClient.startHeartbeat` |
 | Ext 发 ping | `[Ext][RPC CALL] id=N method=ping misses=N` | debug | `RPCClient.sendHeartbeat` |
 | Ext 心跳超时重连 | `[Ext] RPCClient: N heartbeats unanswered — ... reconnecting` | error | `RPCClient.sendHeartbeat` |
+| Ext 拉起 Con | `[Ext] RPCClient: Container not reachable — requesting launch` / `Container launch requested` | notice | `RPCClient.launchContainerIfNeeded` |
 | Ext 配置写入缓存 | `[Ext] Config applied:` | notice | `FinderSync`（onConfigChange 回调） |
-| Con 收到指令并派发执行 | `[Con][IPC RECEIVED]` | notice | `AppState.executeCommand`（commandLogOnly 短路路径） |
+| Con 收到指令并派发执行 | `[Con][RPC RECV→DISPATCH]` | notice | `AppState.executeCommand`（commandLogOnly 短路路径） |
 | Con 检测到 Ext 注册 | `[Con] Extension registered via pluginkit (system-level; not yet RPC-connected)` | notice | `AppState.checkExtensionRegistration` |
 
-> 注：`[IPC RECEIVED]` 标签沿用 XPC 时代命名，与 `[RPC RECV]` 含义重叠；计划改名为 `[RPC RECV→DISPATCH]` 以统一命名（见 `NEXT.md`）。
+> 注：`[RPC RECV→DISPATCH]` 标签与 `[RPC RECV]` 含义有区分：前者表示 Container 收到 RPC 请求后进入 dispatch/执行，后者是原始接收日志。
 
 ### 日志过滤
 
@@ -298,10 +301,10 @@ log stream --debug --predicate 'subsystem == "com.qi-xmu.mac-right-menu.FinderEx
 
 | 文件 | 职责 |
 |------|------|
-| `Shared/XPC/RPCSession.swift` | `RPCServer` + `RPCClient` + JSON-RPC wire types |
+| `Shared/RPC/RPCSession.swift` | `RPCServer` + `RPCClient` + JSON-RPC wire types |
 | `Shared/Constants.swift` | `rpcHost` / `rpcPort` 常量 |
 | `Shared/Models/CommandRequest.swift` | 指令模型（`Action` enum 的 rawValue 用于 RPC params） |
-| `Shared/XPC/CommandResult.swift` | 返回结果模型 |
+| `Shared/RPC/CommandResult.swift` | 返回结果模型 |
 | `mac-right-menu/ViewModels/AppState.swift` | Container 持有 `RPCServer`，实现 `executeCommand` |
 | `FinderExtension/FinderSync.swift` | Extension 持有 `RPCClient` |
 | `FinderExtension/MenuActionHandler.swift` | 菜单点击 → `rpcClient.executeCommand` |
@@ -310,7 +313,7 @@ log stream --debug --predicate 'subsystem == "com.qi-xmu.mac-right-menu.FinderEx
 
 | 风险 | 等级 | 缓解 |
 |------|------|------|
-| Container 未运行/崩溃，Extension 连接失败 | 中 | RPCClient 内置 2 秒自动重连；**心跳 ping/pong 在 ≤45 秒（3 × 15s）内感知半开连接并触发重连**；命令丢弃并记录 [RPC DOWN] |
+| Container 未运行/崩溃，Extension 连接失败 | 低 | RPCClient 内置 2 秒自动重连；**连接失败时自动后台拉起 Container（NSWorkspace.openApplication，节流）**；心跳 ping/pong 在 ≤45 秒内感知半开连接并触发重连 |
 | 固定端口 57421 被占用 | 低 | 当前未处理；可后续改为动态端口 + 文件传递 |
 | TCP 传输无加密 | 低 | loopback 流量不出本机，风险可接受 |
 | Container 改配置时 Extension 未连上 → 推送丢失 | 低 | Extension 下次 RPC 连接 `.ready` 时经 `getConfig` 拉取最新配置；连接前 `cachedConfig` 暂为 `.default` |

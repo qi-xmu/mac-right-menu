@@ -6,7 +6,7 @@ private let logger = Logger(subsystem: Constants.currentBundleID, category: "sha
 /// Each process has its own isolated UserDefaults store:
 /// - Container: ~/Library/Preferences/com.qi-xmu.mac-right-menu.plist (unsandboxed)
 /// - Extension: inside its own sandbox container (no TCC)
-/// Config sync happens via XPC, not shared file I/O.
+/// Config sync happens via RPC, not shared file I/O.
 public enum SharedUserDefaults {
 
     nonisolated(unsafe) private static let defaults = UserDefaults.standard

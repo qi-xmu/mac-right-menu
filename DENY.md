@@ -70,4 +70,4 @@ Container 与 Extension 各自维护 `UserDefaults.standard`（非共享）。�
 | 配置存储 | 各进程独立的 `UserDefaults.standard`（非 App Group 共享） |
 | 配置同步 | Extension 连接时 `getConfig` 拉取 + 运行期间 `configDidChange` 推送（不读各自 store；连接前 cachedConfig 为 `.default`） |
 
-详见 `docs/design/communication-protocol.md`、`docs/design/xpc-architecture.md`、`BUG1.md`。
+详见 `docs/design/communication-protocol.md`、`docs/design/xpc-architecture.md`。

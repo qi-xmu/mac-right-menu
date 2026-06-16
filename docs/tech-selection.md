@@ -57,7 +57,7 @@ mac-right-menu.app
 | 方案 | 复杂度 | 延迟 | 可行性 | 推荐 |
 |------|--------|------|--------|------|
 | ❌ Darwin Notification Center + App Group UserDefaults | 低 | 中 | 沙盒拒绝（`DENY.md`） | 否决 |
-| ❌ `NSXPCConnection` (mach service / XPC Service / endpoint) | 高 | 低 | 三种变体均实测不可行（`BUG1.md`） | 否决 |
+| ❌ `NSXPCConnection` (mach service / XPC Service / endpoint) | 高 | 低 | 三种变体均实测不可行（见 `xpc-architecture.md`） | 否决 |
 | ✅ **JSON-RPC 2.0 over TCP loopback** | 中 | 低 | 沙盒下 `network.client` 可达（已验证） | ⭐ 选用 |
 
 最终选择 **JSON-RPC over TCP**：Extension 通过 `RPCClient` 连接 Container 的 `RPCServer`（`127.0.0.1:57421`），

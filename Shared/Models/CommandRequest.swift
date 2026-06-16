@@ -1,9 +1,9 @@
 import Foundation
 
-@objc(CommandRequest)
-public final class CommandRequest: NSObject, NSSecureCoding, @unchecked Sendable {
-
-    public enum Action: Int {
+/// A command dispatched from the Finder Extension to the Container over RPC.
+/// Mirrored on the wire by `RPCParams`.
+public struct CommandRequest: Codable, Sendable {
+    public enum Action: Int, Codable, Sendable {
         case newFile = 0
         case openWithApp = 1
         case copyPath = 2
@@ -23,23 +23,5 @@ public final class CommandRequest: NSObject, NSSecureCoding, @unchecked Sendable
         self.files = files
         self.command = command
         self.extra = extra
-    }
-
-    public static var supportsSecureCoding: Bool { true }
-
-    public func encode(with coder: NSCoder) {
-        coder.encode(action.rawValue, forKey: "action")
-        coder.encode(files, forKey: "files")
-        coder.encode(command, forKey: "command")
-        coder.encode(extra, forKey: "extra")
-    }
-
-    public init?(coder: NSCoder) {
-        guard let action = Action(rawValue: coder.decodeInteger(forKey: "action")) else { return nil }
-        guard let files = coder.decodeArrayOfObjects(ofClass: NSString.self, forKey: "files") as? [String] else { return nil }
-        self.action = action
-        self.files = files
-        self.command = coder.decodeObject(of: NSString.self, forKey: "command") as String?
-        self.extra = coder.decodeObject(of: [NSDictionary.self, NSString.self], forKey: "extra") as? [String: String]
     }
 }

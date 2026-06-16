@@ -32,9 +32,6 @@ public enum Constants {
     public static let heartbeatInterval: TimeInterval = 15
     public static let heartbeatMaxMisses: Int = 3
 
-    /// File name for the serialized NSXPCListenerEndpoint, shared via App Group container.
-    public static let endpointFileName = "xpc_endpoint.dat"
-
     public enum Defaults {
         public static let menuConfigKey = "menuConfiguration"
         public static let isExtensionEnabledKey = "isExtensionEnabled"

@@ -83,8 +83,7 @@ Container App 负责所有文件操作，无沙盒限制，也无需 TCC 权限�
 1. macOS 已知 bug：沙盒中 `startAccessingSecurityScopedResource()` 对 `selectedItemURLs()` 返回的 URL 返回 false
 2. `temporary-exception` 方案触发多次 TCC 权限弹窗，且 MAS 上架必定被拒
 
-**IPC 机制选择：JSON-RPC over TCP**（详见 `communication-protocol.md` 与 `BUG1.md` 排查历程）。
-XPC 的 mach service / XPC Service / 匿名 listener + endpoint 三种方案均经实测不可行，最终改用 TCP loopback + JSON-RPC 2.0。
+**IPC 机制选择：JSON-RPC over TCP**（详见 `communication-protocol.md`）。XPC 的三种方案均经实测不可行，否决表见 `xpc-architecture.md`。
 
 ### 最终 Entitlements
 

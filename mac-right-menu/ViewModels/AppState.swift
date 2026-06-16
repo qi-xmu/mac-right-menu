@@ -116,7 +116,12 @@ class AppState: ObservableObject {
     }
 
     func shutdownExtensions() {
-        rpcServer.stop()
+        rpcServer.broadcastShutdown()
+        // Brief delay so connected Extensions can receive the shutdown
+        // notification before the listener is torn down.
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            self?.rpcServer.stop()
+        }
     }
 
     func clearLog() {
@@ -204,7 +209,7 @@ class AppState: ObservableObject {
         // commandLogOnly: record receipt but skip execution.
         if SharedUserDefaults.commandLogOnly {
             logger.notice("""
-                [Con][IPC RECEIVED] action=\(command.action.rawValue, privacy: .public) \
+                [Con][RPC RECV→DISPATCH] action=\(command.action.rawValue, privacy: .public) \
                 files=\(command.files, privacy: .public) \
                 cmd=\(command.command ?? "nil", privacy: .public) \
                 extra=\(command.extra?.description ?? "nil", privacy: .public)

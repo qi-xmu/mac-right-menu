@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Network
 import os.log
@@ -121,6 +122,18 @@ struct RPCNotification: Codable {
     }
 }
 
+/// JSON-RPC shutdown notification (no `id`, no params, no response expected).
+/// Sent by the Container before terminating so the Extension can exit cleanly.
+struct RPCShutdownNotification: Codable {
+    let jsonrpc: String
+    let method: String
+
+    init() {
+        self.jsonrpc = "2.0"
+        self.method = "shutdown"
+    }
+}
+
 // MARK: - Line-delimited JSON framing over NWConnection
 
 /// Reads complete newline-terminated JSON lines from an NWConnection.
@@ -237,6 +250,18 @@ public final class RPCServer: @unchecked Sendable {
         snapshot.forEach { sendJSON(note, on: $0) }
     }
 
+    /// Push a `shutdown` notification to every connected Extension so they can
+    /// exit cleanly. Called by the Container before terminating.
+    public func broadcastShutdown() {
+        let note = RPCShutdownNotification()
+        lock.lock()
+        let snapshot = activeConnections
+        lock.unlock()
+        guard !snapshot.isEmpty else { return }
+        logger.notice("[Con] RPCServer: broadcast shutdown to \(snapshot.count) connection(s)")
+        snapshot.forEach { sendJSON(note, on: $0) }
+    }
+
     private func handle(_ connection: NWConnection) {
         lock.lock()
         activeConnections.append(connection)
@@ -320,6 +345,7 @@ public final class RPCClient: @unchecked Sendable {
     private var pending: [Int: (RPCResult?) -> Void] = [:]
     private var retryWork: DispatchWorkItem?
     private var onConfigChange: (@Sendable (MenuConfiguration) -> Void)?
+    private var onShutdown: (@Sendable () -> Void)?
 
     // Heartbeat: a repeating timer fires every `heartbeatInterval`; each tick
     // sends a ping and bumps `consecutiveMisses`. Receiving a pong clears the
@@ -327,6 +353,17 @@ public final class RPCClient: @unchecked Sendable {
     // dead and we reconnect.
     private var heartbeatTimer: DispatchSourceTimer?
     private var consecutiveMisses: Int = 0
+
+    // Container auto-launch: when the connection fails we ask LaunchServices to
+    // open the Container app. Throttled so repeated retries (every 2s) don't
+    // re-issue the launch request; the flag is cleared on a successful connect.
+    private var containerLaunchRequested = false
+    private static let containerLaunchCooldown: TimeInterval = 10
+
+    // Retry limit: after `maxFailedRetries` consecutive failures the Extension
+    // gives up and exits. Counter resets on successful connect.
+    private var failedRetries: Int = 0
+    static let maxFailedRetries = 3
 
     public init() {}
 
@@ -336,6 +373,14 @@ public final class RPCClient: @unchecked Sendable {
     public func setConfigChangeHandler(_ handler: @escaping @Sendable (MenuConfiguration) -> Void) {
         lock.lock()
         onConfigChange = handler
+        lock.unlock()
+    }
+
+    /// Register a handler invoked when the Container sends a `shutdown`
+    /// notification before terminating. Called on an arbitrary background queue.
+    public func setShutdownHandler(_ handler: @escaping @Sendable () -> Void) {
+        lock.lock()
+        onShutdown = handler
         lock.unlock()
     }
 
@@ -354,15 +399,30 @@ public final class RPCClient: @unchecked Sendable {
             switch state {
             case .ready:
                 logger.notice("[Ext] RPCClient: connected to \(Constants.rpcHost, privacy: .public):\(Constants.rpcPort)")
-                self?.receiveLoop()
+                guard let self else { return }
+                // Connected: clear the launch-throttle flag and reset the
+                // failed-retry counter so a future drop starts fresh.
+                self.lock.lock()
+                self.containerLaunchRequested = false
+                self.failedRetries = 0
+                self.lock.unlock()
+                self.receiveLoop()
                 // Pull the current config from the Container immediately so the
                 // Extension's cache reflects the latest state on connect (each
                 // process keeps its own UserDefaults, so the init-time read is
                 // unreliable).
-                self?.fetchConfig()
+                self.fetchConfig()
                 // Begin heartbeating so a dead Container is detected within
                 // ~heartbeatInterval * heartbeatMaxMisses.
-                self?.startHeartbeat()
+                self.startHeartbeat()
+            case .waiting(let err):
+                // NWConnection stays in .waiting for connection-refused instead
+                // of transitioning to .failed. Cancel and retry manually so the
+                // auto-launch mechanism can kick in.
+                logger.warning("[Ext] RPCClient: connection waiting — \(err.localizedDescription, privacy: .public)")
+                self?.stopHeartbeat()
+                self?.resetAndRetry()
+                conn.cancel()
             case .failed, .cancelled:
                 logger.warning("RPCClient: connection \(String(describing: state))")
                 self?.stopHeartbeat()
@@ -511,9 +571,86 @@ public final class RPCClient: @unchecked Sendable {
         connection = nil
         let snapshot = pending
         pending.removeAll()
+        failedRetries += 1
+        let attempts = failedRetries
         lock.unlock()
         for (_, cb) in snapshot { cb(nil) }
+
+        if attempts >= Self.maxFailedRetries {
+            logger.error("[Ext] RPCClient: \(attempts) consecutive connection failures — giving up")
+            onShutdown?()
+            return
+        }
+
+        // Connection failed — most likely the Container isn't running. Ask
+        // LaunchServices to open it so subsequent retries can succeed.
+        launchContainerIfNeeded()
         scheduleRetry()
+    }
+
+    /// Ask LaunchServices to open the Container app in the background. The
+    /// Container is `LSUIElement`, so it comes up without a Dock icon or a
+    /// stealing focus. Throttled: only one launch request per cooldown window
+    /// (repeated 2s retries must not spam the request), and the flag clears on
+    /// a successful connect.
+    private func launchContainerIfNeeded() {
+        lock.lock()
+        if containerLaunchRequested {
+            lock.unlock()
+            return
+        }
+        containerLaunchRequested = true
+        lock.unlock()
+
+        let bundleID = Constants.mainAppBundleID
+        logger.notice("[Ext] RPCClient: Container not reachable — requesting launch (\(bundleID, privacy: .public))")
+
+        // Tier 1: Resolve app URL via LaunchServices, then open in background.
+        if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
+            let config = NSWorkspace.OpenConfiguration()
+            config.activates = false   // background: don't steal focus (Con is LSUIElement anyway)
+            NSWorkspace.shared.openApplication(at: appURL, configuration: config) { [weak self] runningApp, error in
+                if let error {
+                    logger.error("[Ext] RPCClient: Container launch failed: \(error.localizedDescription, privacy: .public)")
+                    self?.scheduleCooldownReset()
+                } else if runningApp != nil {
+                    logger.notice("[Ext] RPCClient: Container launch requested")
+                }
+            }
+            return
+        }
+
+        // Tier 2: App not in LaunchServices (e.g. never launched after install).
+        // Try `open -b <bundleID>` as fallback — uses a different LaunchServices
+        // code path that may succeed even when urlForApplication returns nil.
+        logger.notice("[Ext] RPCClient: Container not in LaunchServices — trying open -b fallback")
+        launchViaOpenB(bundleID: bundleID)
+    }
+
+    private func launchViaOpenB(bundleID: String) {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        task.arguments = ["-b", bundleID, "--background"]
+        do {
+            try task.run()
+            task.waitUntilExit()
+            let status = task.terminationStatus
+            if status == 0 {
+                logger.notice("[Ext] RPCClient: open -b launch succeeded (status=0)")
+            } else {
+                logger.error("[Ext] RPCClient: open -b failed (exit \(status)) — Container may not be installed")
+                scheduleCooldownReset()
+            }
+        } catch {
+            logger.error("[Ext] RPCClient: open -b exception: \(error.localizedDescription, privacy: .public)")
+            scheduleCooldownReset()
+        }
+    }
+
+    private func scheduleCooldownReset() {
+        DispatchQueue.global().asyncAfter(deadline: .now() + Self.containerLaunchCooldown) { [weak self] in
+            self?.lock.lock(); self?.containerLaunchRequested = false; self?.lock.unlock()
+        }
     }
 
     private func scheduleRetry() {
@@ -538,6 +675,18 @@ public final class RPCClient: @unchecked Sendable {
     private func handleResponse(_ lineData: Data) {
         let payload = String(data: lineData, encoding: .utf8) ?? "<binary>"
         logger.debug("[\(Constants.currentProcessRole, privacy: .public)][RPC RECV] \(payload, privacy: .public)")
+
+        // Try shutdown notification first (no params, just method "shutdown").
+        if let shutdown = try? JSONDecoder().decode(RPCShutdownNotification.self, from: lineData) {
+            if shutdown.method == "shutdown" {
+                logger.notice("[Ext] RPCClient: received shutdown from Container")
+                lock.lock()
+                let handler = onShutdown
+                lock.unlock()
+                handler?()
+            }
+            return
+        }
 
         // A server-pushed notification has `method` and no `id`; a response has
         // `id` and no `method`. Try the notification shape first.

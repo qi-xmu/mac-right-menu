@@ -7,9 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0B5469E7DCE4B1A94C499A4B /* RPCSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAB1987AF34FFE7FA5943EF5 /* RPCSession.swift */; };
 		1FA1B55404E5A8A4B8F5B0DF /* ExecutionLogEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E11FAF32F404EE1051398B4 /* ExecutionLogEntry.swift */; };
 		3237E76B10AD05A83D9874CC /* ActionsSettingsTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79D69EBC70AADF2563A596E3 /* ActionsSettingsTab.swift */; };
-		3372606B0141C42E6DEFFC01 /* RPCSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28203059A596AA3043EFA1D1 /* RPCSession.swift */; };
 		3588A946E437161A77DB85CB /* mac_right_menuApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6763067652997C56891A197 /* mac_right_menuApp.swift */; };
 		3CADA174838B7825E0322020 /* ActionMenuItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE62B2AEB26ABD533E6BE6F5 /* ActionMenuItem.swift */; };
 		42AC784A6E8DB45CD1D43963 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = FF59226764AF1CFFDC561239 /* Localizable.xcstrings */; };
@@ -22,16 +22,16 @@
 		55237B827DC42929BB534AB9 /* Constants.swift in Sources */ = {isa = PBXBuildFile; fileRef = 108A6DB428B7D682BFE80908 /* Constants.swift */; };
 		5ABA55F5E5C6D48D34B07F2A /* CommandRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86A57D93B91AC0A3A6F79288 /* CommandRequest.swift */; };
 		5D47F2440E7DD71644A9E934 /* SharedUserDefaults.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40CE98C6FE58A80ADB8B26C5 /* SharedUserDefaults.swift */; };
+		690F2CB0C5DE1FE0E93C652B /* CommandResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = 334B0F3539617B5A5ED3CB61 /* CommandResult.swift */; };
 		6A9D31D9532EE14579A10D1C /* NewFileSettingsTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59CA55100CF81240021634FC /* NewFileSettingsTab.swift */; };
 		6B8B9AB7DA9F01452C2B4783 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = FF59226764AF1CFFDC561239 /* Localizable.xcstrings */; };
 		8274032C4E1DC02B573863A4 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDA173AFFD620244655EA215 /* AppState.swift */; };
 		82ACB851B2BC1CF189915121 /* NewFileTemplate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9C495B11F638A04B8E3EFED /* NewFileTemplate.swift */; };
 		9803AC52979C551481947554 /* AppMenuItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A61B788DDF2E3EAD81F4133 /* AppMenuItem.swift */; };
-		9B5432CC43D65CF1D20CD3D1 /* RPCSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28203059A596AA3043EFA1D1 /* RPCSession.swift */; };
 		9C07ABF04254FBD3155727FB /* FinderSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD39CB04B25FC831003DBF3A /* FinderSync.swift */; };
 		A0C6F748EC529DDF15F851D1 /* MenuActionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CBECB73A36E2983BD394B54 /* MenuActionHandler.swift */; };
-		A4F643D864BBACE281E8E7A1 /* CommandResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15B94EBD2C2506265BC5D234 /* CommandResult.swift */; };
-		A8DB0F3865A12115128CE30B /* CommandResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15B94EBD2C2506265BC5D234 /* CommandResult.swift */; };
+		A3AB653447DEB32878DDA243 /* RPCSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAB1987AF34FFE7FA5943EF5 /* RPCSession.swift */; };
+		A5053B099A0485A28783A82A /* CommandResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = 334B0F3539617B5A5ED3CB61 /* CommandResult.swift */; };
 		A90ABA38D57C95A8880B6118 /* GeneralSettingsTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = B046667D4B2820EA5E428CDD /* GeneralSettingsTab.swift */; };
 		A9D4693E26AF534902A7EC95 /* MenuItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69E67F8AC8310E0732AFDB94 /* MenuItem.swift */; };
 		ADAFC6CA85BEB78250DC40F3 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7CFB1776D4B9F302D8A8CC2 /* SettingsView.swift */; };
@@ -75,10 +75,9 @@
 		0B36F6B6DC5A4AAB90168799 /* FinderSync.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = FinderSync.framework; sourceTree = "<group>"; };
 		0CBECB73A36E2983BD394B54 /* MenuActionHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuActionHandler.swift; sourceTree = "<group>"; };
 		108A6DB428B7D682BFE80908 /* Constants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Constants.swift; sourceTree = "<group>"; };
-		15B94EBD2C2506265BC5D234 /* CommandResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandResult.swift; sourceTree = "<group>"; };
 		1E11FAF32F404EE1051398B4 /* ExecutionLogEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExecutionLogEntry.swift; sourceTree = "<group>"; };
 		255056C34CEA98661DC8EE7A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		28203059A596AA3043EFA1D1 /* RPCSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RPCSession.swift; sourceTree = "<group>"; };
+		334B0F3539617B5A5ED3CB61 /* CommandResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandResult.swift; sourceTree = "<group>"; };
 		3F3C1D1332A39A4FB6880E99 /* mac-right-menu.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "mac-right-menu.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		40CE98C6FE58A80ADB8B26C5 /* SharedUserDefaults.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedUserDefaults.swift; sourceTree = "<group>"; };
 		568C283306D87E86AA48AA17 /* mac-right-menu.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "mac-right-menu.entitlements"; sourceTree = "<group>"; };
@@ -91,6 +90,7 @@
 		982C57228CB76B4D291F9C5D /* ExecutionLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExecutionLogView.swift; sourceTree = "<group>"; };
 		A3C2B33C43F556A0F45272B7 /* FinderExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FinderExtension.entitlements; sourceTree = "<group>"; };
 		A7CFB1776D4B9F302D8A8CC2 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		AAB1987AF34FFE7FA5943EF5 /* RPCSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RPCSession.swift; sourceTree = "<group>"; };
 		AE62B2AEB26ABD533E6BE6F5 /* ActionMenuItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionMenuItem.swift; sourceTree = "<group>"; };
 		B046667D4B2820EA5E428CDD /* GeneralSettingsTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneralSettingsTab.swift; sourceTree = "<group>"; };
 		B0D9421302623A30C0699F81 /* AppsSettingsTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppsSettingsTab.swift; sourceTree = "<group>"; };
@@ -174,7 +174,7 @@
 				FF59226764AF1CFFDC561239 /* Localizable.xcstrings */,
 				E071B965571E2ABBDB3F82C0 /* Models */,
 				3891F364B0653E2749B28F92 /* Preferences */,
-				B29FBA51D978BE3FB724C95E /* XPC */,
+				B3FE1FE37D5A11521C160E3D /* RPC */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
@@ -211,13 +211,13 @@
 			path = "mac-right-menu";
 			sourceTree = "<group>";
 		};
-		B29FBA51D978BE3FB724C95E /* XPC */ = {
+		B3FE1FE37D5A11521C160E3D /* RPC */ = {
 			isa = PBXGroup;
 			children = (
-				15B94EBD2C2506265BC5D234 /* CommandResult.swift */,
-				28203059A596AA3043EFA1D1 /* RPCSession.swift */,
+				334B0F3539617B5A5ED3CB61 /* CommandResult.swift */,
+				AAB1987AF34FFE7FA5943EF5 /* RPCSession.swift */,
 			);
-			path = XPC;
+			path = RPC;
 			sourceTree = "<group>";
 		};
 		C88E932ABD266B3527610F69 /* Products */ = {
@@ -354,7 +354,7 @@
 				8274032C4E1DC02B573863A4 /* AppState.swift in Sources */,
 				CA91B5C0EEBB92FAB08B26EC /* AppsSettingsTab.swift in Sources */,
 				5ABA55F5E5C6D48D34B07F2A /* CommandRequest.swift in Sources */,
-				A4F643D864BBACE281E8E7A1 /* CommandResult.swift in Sources */,
+				A5053B099A0485A28783A82A /* CommandResult.swift in Sources */,
 				BAEBD582B5740CFC30BC6A90 /* Constants.swift in Sources */,
 				CC1B9D616EDE28553F3FE470 /* ExecutionLogEntry.swift in Sources */,
 				FD33F2EA80667D971C6B361C /* ExecutionLogView.swift in Sources */,
@@ -363,7 +363,7 @@
 				A9D4693E26AF534902A7EC95 /* MenuItem.swift in Sources */,
 				6A9D31D9532EE14579A10D1C /* NewFileSettingsTab.swift in Sources */,
 				82ACB851B2BC1CF189915121 /* NewFileTemplate.swift in Sources */,
-				3372606B0141C42E6DEFFC01 /* RPCSession.swift in Sources */,
+				0B5469E7DCE4B1A94C499A4B /* RPCSession.swift in Sources */,
 				ADAFC6CA85BEB78250DC40F3 /* SettingsView.swift in Sources */,
 				5D47F2440E7DD71644A9E934 /* SharedUserDefaults.swift in Sources */,
 				3588A946E437161A77DB85CB /* mac_right_menuApp.swift in Sources */,
@@ -377,7 +377,7 @@
 				3CADA174838B7825E0322020 /* ActionMenuItem.swift in Sources */,
 				516920CA93096E07838CA285 /* AppMenuItem.swift in Sources */,
 				46B5433DBA9B24B6803842E1 /* CommandRequest.swift in Sources */,
-				A8DB0F3865A12115128CE30B /* CommandResult.swift in Sources */,
+				690F2CB0C5DE1FE0E93C652B /* CommandResult.swift in Sources */,
 				55237B827DC42929BB534AB9 /* Constants.swift in Sources */,
 				1FA1B55404E5A8A4B8F5B0DF /* ExecutionLogEntry.swift in Sources */,
 				9C07ABF04254FBD3155727FB /* FinderSync.swift in Sources */,
@@ -386,7 +386,7 @@
 				4D88EAF0DF9B98B2F7F40359 /* MenuConfiguration.swift in Sources */,
 				E945BC42E525987797674D68 /* MenuItem.swift in Sources */,
 				4D7AC92E0205772785D0EE29 /* NewFileTemplate.swift in Sources */,
-				9B5432CC43D65CF1D20CD3D1 /* RPCSession.swift in Sources */,
+				A3AB653447DEB32878DDA243 /* RPCSession.swift in Sources */,
 				4ACC97BF92B731BA6579BA34 /* SharedUserDefaults.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

@@ -162,5 +162,5 @@ menu(for:): 加锁读 cachedConfig    // 零 I/O、零解码
 | `FinderExtension/MenuBuilder.swift` | NSMenu 构造 |
 | `FinderExtension/MenuActionHandler.swift` | 菜单点击 → CommandRequest，通过 `RPCClient` 发送 |
 | `Shared/Models/CommandRequest.swift` | RPC 指令结构（NSSecureCoding，RPC 层用 `RPCParams` 包装） |
-| `Shared/XPC/RPCSession.swift` | JSON-RPC over TCP（RPCServer + RPCClient） |
+| `Shared/RPC/RPCSession.swift` | JSON-RPC over TCP（RPCServer + RPCClient） |
 | `mac-right-menu/ViewModels/AppState.swift` | Container App 状态管理，持有 `RPCServer`，实现 `executeCommand` |
