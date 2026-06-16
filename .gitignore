@@ -11,3 +11,5 @@ Config/Local.xcconfig
 .DS_Store
 
 .mimocode
+
+build

@@ -33,7 +33,11 @@ A macOS Finder right‑click extension has two parts:
 
 ### Communication Patterns
 
-- **Extension → Container**: Use `NSXPCConnection` or Darwin Notification Center (`CFNotificationCenter`)
+- **Extension → Container**: JSON-RPC 2.0 over TCP loopback (`127.0.0.1:57421`). Extension uses `RPCClient` (NWConnection), Container runs `RPCServer` (NWListener). Messages are line-delimited JSON.
+- **Config sync**: `getConfig` pull on connect + `configDidChange` push on change (both via RPC). Each process keeps its own `UserDefaults.standard`; config travels in-band.
+- **Heartbeat**: Bidirectional ping/pong. Ext→Con detects dead Container (reconnects). Con→Ext detects dead Extension (re-launches via `pluginkit -e use`).
+- **Auto-launch**: Ext auto-launches Container on connect failure (`NSWorkspace.openApplication` / `open -b` fallback). Container auto-launches Extensions on startup via `pluginkit -e use` (configurable per-extension).
+- **Single-instance**: Container uses `NSRunningApplication` fast check + `flock()` atomic lock.
 - **Extension → External tools/services**: The extension can invoke shell commands via `Process()`, call web APIs, or interop with other apps via AppleEvents/scripting
 - **Sandboxing**: Finder Sync Extensions run in a sandbox. All file access requires user intent or security-scoped bookmarks
 
@@ -67,7 +71,7 @@ pluginkit -a /path/to/build/mac-right-menu.app/Contents/PlugIns/FinderExtension.
 
 # Enable/disable extension in System Settings > Privacy & Security > Extensions > Finder Extensions
 # Or via command line:
-pluginkit -e use -i com.you.bundle.finder-extension
+pluginkit -e use -i com.qi-xmu.mac-right-menu.FinderExtension
 ```
 
 ### Testing
@@ -78,7 +82,7 @@ pluginkit -e use -i com.you.bundle.finder-extension
 killall Finder
 
 # 2. Check console logs for extension output:
-log stream --predicate 'subsystem == "com.you.bundle"'
+log stream --predicate 'subsystem == "com.qi-xmu.mac-right-menu" OR subsystem == "com.qi-xmu.mac-right-menu.FinderExtension"'
 ```
 
 ### Debugging
@@ -103,7 +107,7 @@ xcode-select --install  # ensure Xcode CLT
 
 ### Code Signing
 - Finder extensions **must** be code‑signed (development or distribution certificate)
-- The extension inherits the container app's bundle ID with `.FinderExtension` appended (e.g., `com.you.app.FinderExtension`)
+- The extension inherits the container app's bundle ID with `.FinderExtension` appended (e.g., `com.qi-xmu.mac-right-menu.FinderExtension`)
 - Hardened Runtime is automatically applied for notarized builds
 
 ### Sandbox Restrictions

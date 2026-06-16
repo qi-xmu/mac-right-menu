@@ -71,7 +71,8 @@ private var cachedConfig: MenuConfiguration = .default
 
 override init() {
     super.init()
-    cachedConfig = SharedUserDefaults.menuConfiguration   // 读一次
+    // 不再读自己的 store — 两端 UserDefaults 隔离，本地 store 拿不到 Container 的写入。
+    // cachedConfig 保持 .default 直到 RPC 连上后经 getConfig 刷新为真实配置。
     // ...
 }
 
@@ -90,8 +91,8 @@ override func menu(for menuKind: FIMenuKind) -> NSMenu {
 ```
 mac-right-menu
 ├─ 新建文件 (New File)          ← 子菜单，列出模板
-│   ├─ newfile.txt
-│   ├─ newfile.md
+│   ├─ 未命名.txt
+│   ├─ 未命名.md
 │   └─ ...
 ├─ Open With                    ← 单 item 或子菜单
 │   ├─ VS Code
@@ -100,8 +101,7 @@ mac-right-menu
 └─ 操作
     ├─ 复制路径 (Copy Path)
     ├─ 复制文件名 (Copy File Name)
-    ├─ 切换隐藏 (Toggle Hidden)
-    └─ 打开父目录 (Open Parent)
+    └─ 切换隐藏 (Toggle Hidden)
 ```
 
 分组顺序固定：新建文件 → Open With → 通用操作。每组的显隐由配置中的 `isEnabled` 控制。
@@ -118,9 +118,8 @@ tag 范围       操作                      示例
 2000–2999     通用操作                   tag = 2000 + offset
               ├─ 2000  copyPath
               ├─ 2001  copyFileName
-              ├─ 2002  toggleHidden
-              └─ 2003  openParent
-4000–4999     自定义命令 (shell)         tag = 4000 + shellIndex
+              └─ 2002  toggleHidden
+4000–4999     自定义命令 (shell)         tag = 4000 + shellIndex（未实现）
 ```
 
 ### 编码原则
@@ -161,6 +160,6 @@ menu(for:): 加锁读 cachedConfig    // 零 I/O、零解码
 | `FinderExtension/FinderSync.swift` | Extension 入口，init 时缓存配置，实现 `menu(for:)` |
 | `FinderExtension/MenuBuilder.swift` | NSMenu 构造 |
 | `FinderExtension/MenuActionHandler.swift` | 菜单点击 → CommandRequest，通过 `RPCClient` 发送 |
-| `Shared/Models/CommandRequest.swift` | RPC 指令结构（NSSecureCoding，RPC 层用 `RPCParams` 包装） |
+| `Shared/Models/CommandRequest.swift` | RPC 指令结构（Codable，RPC 层用 `RPCParams` 包装） |
 | `Shared/RPC/RPCSession.swift` | JSON-RPC over TCP（RPCServer + RPCClient） |
 | `mac-right-menu/ViewModels/AppState.swift` | Container App 状态管理，持有 `RPCServer`，实现 `executeCommand` |

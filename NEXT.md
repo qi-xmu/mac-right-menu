@@ -1,7 +1,7 @@
 # NEXT.md
 
 > 待办与设计差异，按优先级排列。
-> 更新: 2026-06-16（XPC 方案废弃，改用 JSON-RPC over TCP；configDidChange 实时配置同步 + 连接失败自动拉起 Container 已实现并移出待办）
+> 更新: 2026-06-17（Debug Log 功能已编码但未集成到 Xcode 项目；RPCActivity 编译错误待修复）
 
 ---
 
@@ -30,7 +30,7 @@
 
 ### 2. 固定端口 57421 的冲突处理缺失
 
-`RPCServer.start()` 监听失败仅 `logger.error`（`RPCSession.swift:148`），不尝试备用端口，也不通知 UI。
+`RPCServer.start()` 监听失败仅 `logger.error`（`RPCSession.swift:237-238`），不尝试备用端口，也不通知 UI。
 
 **可选方案**：
 - A. 监听失败后尝试 +1/+2 端口，写入 App Group 文件供 Extension 读取（注意 App Group 文件 I/O 有 TCC 风险，见 `DENY.md`）
@@ -41,24 +41,28 @@
 
 ## 🔵 P2 — 长期优化 / 打磨
 
-### 3. Extension 注册/启用状态检测增强
+### 3. 新建文件模板：从模板文件载入内容
 
-`AppState.checkExtensionRegistration()` 用 `pluginkit -m -p com.apple.FinderSync` 检测注册，但不解析输出行首的状态标志（`!` 禁用 / `+` 启用 / `-` 用户禁用）。
-开发期需手动 `pluginkit -e use -i com.qi-xmu.mac-right-menu.FinderExtension` 启用扩展。
+当前每个模板（由「文件名 + 后缀」定义，如 未命名.md）都创建**空内容**文件，用户无法预设模板内容（如 Markdown 的 `# 标题\n`、JSON 的 `{}` 骨架）。
 
-**可选方案**：解析 `pluginkit -m` 输出行的首个字符判断启用状态；若为 `!`/`-`，在 App UI 引导用户到「系统设置 → 扩展 → 访达扩展」启用。
+**现状**：
 
-### 4. App Store 上架评估
+| 环节 | 状态 |
+|---|---|
+| `NewFileTemplate.defaultContent: String` | ✅ 字段存在，但内置默认模板全部为空（`""`） |
+| `NewFileSettingsTab` Add Template sheet | ❌ 仅可填 fileName / extension，**无内容输入** |
+| `AppState.executeCommand(.newFile)` 写文件 | ✅ 已用 `template.defaultContent`（`AppState.swift:477`），但永远写空 |
+| 用户自定义模板内容 | ❌ 无任何 UI 入口 |
 
-Container 非沙盒（无法上架 MAS）。`network.client` entitlement 本身 MAS 兼容，但非沙盒 Container 需评估分发策略（Developer ID 签名 + 公证 + 官网/GitHub Releases 分发）。
+**待办**：
+1. `NewFileSettingsTab` 列表行/编辑入口：新增「选择模板文件…」按钮（`NSOpenPanel`），按模板后缀过滤（仅允许选该后缀文件），读取内容写入 `template.defaultContent`。
+2. 预览：列表行点击展开 / 二级 sheet 展示当前模板内容（只读多行文本预览）。
+3. （可选）内置模板恢复常用骨架：md→`# \n`、json→`{\n  \n}\n`，并提供「恢复内置内容」按钮。
+4. 持久化：`defaultContent` 已随 `MenuConfiguration` 存入 App Group `UserDefaults`，无需额外迁移；注意大文件会让配置体积膨胀，需评估上限（建议限制 < 1MB，超限提示）。
 
-### 5. 残留清理（小）
+**涉及文件**：`mac-right-menu/Views/NewFileSettingsTab.swift`（`NSOpenPanel` + 预览）、`Shared/Models/NewFileTemplate.swift`（无需改字段）。
 
-- `Shared/Constants.swift:14` 的 `endpointFileName = "xpc_endpoint.dat"` 已无任何引用（failed scheme C 遗留），可删除。
-
-### 6. 日志命名一致性（小）
-
-`AppState.swift:160` 的 `[IPC RECEIVED]` 命名沿用 XPC 时代，建议改为 `[RPC RECV→DISPATCH]` 以与 `[RPC SEND]`/`[RPC RECV]` 对齐。
+**不在本期范围**：模板内容的版本管理 / 多版本、模板内容用文件路径引用而非内联（架构级改动）。
 
 ---
 
@@ -66,4 +70,5 @@ Container 非沙盒（无法上架 MAS）。`network.client` entitlement 本身 
 
 1. **P1.1 Shell 菜单项**（功能完整性，最直接的用户价值）
 2. **P1.2 端口冲突**（开发期偶发，可低优先级）
-3. P2.* 按需推进
+3. **P2.3 模板文件载入内容**（提升新建文件实用性，与 P1.1 并列推进）
+4. P2.* 按需推进

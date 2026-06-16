@@ -1,7 +1,7 @@
 # 通信协议设计
 
 > 日期: 2026-06-08（初版）
-> 更新: 2026-06-16（NSXPC → JSON-RPC over TCP；configDidChange 实时推送 + getConfig 连接时拉取；RPC 返回真实执行结果；心跳保活 ping/pong；连接失败自动拉起 Container）
+> 更新: 2026-06-17（双向心跳 Con→Ext + Ext→Con；自动拉起 Container/Extension；单实例 flock 锁）
 > 状态: 已实现
 
 ## 概述
@@ -52,6 +52,7 @@ Container 做 Server 的理由：
 - Container 生命周期由用户控制（一直在线）→ 监听稳定
 - Extension 由 Finder 按需启动 → 作为 client 连接/断开不影响 Container
 - Container 非沙盒可自由监听端口；Extension 沙盒只需出站连接权限
+- Container 持有 flock 锁保证单实例；Extension 通过 `kill(pid, 0)` 校验 Container 存活
 
 ## JSON-RPC 2.0 协议
 
@@ -100,10 +101,15 @@ Container 做 Server 的理由：
 
 ```
 Container App 启动
+    → NSRunningApplication 快速检查（已有实例？）
+    → flock() 原子锁（防竞争）
     → RPCServer.start()
     → NWListener(using: .tcp, on: 57421)
     → listener.start(queue: .global(qos: .utility))
+    → startPingTimer()（Con→Ext 心跳）
     → 监听就绪，等待连接
+    → checkExtensionRegistration()（异步 pluginkit 探测）
+    → autoLaunchExtensions()（注册成功后自动拉起 autoLaunch 启用的 Extension）
 
 Extension 被 Finder 唤醒 (init)
     → cachedConfig = .default（临时值，连接前兜底）
@@ -114,8 +120,10 @@ Extension 被 Finder 唤醒 (init)
     → 状态变为 .ready
         → receiveLoop() 开始
         → fetchConfig() → getConfig 请求 → Container 回当前配置 → 刷新 cachedConfig
+        → sendHeartbeat()（立即首 ping）→ startHeartbeat()（1s 快速心跳 → 确认后 15s）
         → 可调用 executeCommand
     → 若 Container 未运行，2 秒后自动重试（cachedConfig 暂留 .default）
+    → 重试前自动后台拉起 Container（NSWorkspace.openApplication / open -b fallback）
 ```
 
 ### 2. 执行指令
@@ -151,47 +159,72 @@ Finder 唤醒 Extension (init)
 ```
 
 **自动拉起要点**：
-- **时机**：仅连接失败（`resetAndRetry`）时触发，不在 init 主动拉起，避免 Ext 被 Finder 频繁唤醒时冗余拉起。
+- **Ext→Con 拉起时机**：仅连接失败（`resetAndRetry`）时触发，不在 init 主动拉起，避免 Ext 被 Finder 频繁唤醒时冗余拉起。
+- **Con→Ext 重新拉起**：Container 的 Con→Ext 心跳检测到 Ext 断连后，若该 Extension 的 `autoLaunch == true`，自动调用 `pluginkit -e use` 重新拉起。
 - **后台拉起**：`NSWorkspace.OpenConfiguration.activates = false` 不抢焦点；Con 本身是 `LSUIElement`，无 Dock 图标、不弹窗口，只在菜单栏运行。
 - **节流**：`containerLaunchRequested` 标志位，一次失败周期内只请求一次拉起；`.ready` 连接成功后清零，下次掉线可再请求；拉起失败则 10 秒冷却后允许重试。
 - **依赖**：`urlForApplication(withBundleIdentifier:)` 需 Con 已在 LaunchServices 注册。若未注册（如全新环境），自动 fallback 到 `open -b <bundleID>` 通过命令行触发 LaunchServices 拉起。若两者均失败（app 未安装），日志报错，Ext 退化为纯重试直到用户手动启动 Con。
 - **沙盒**：FinderSync 扩展用 `NSWorkspace.openApplication` 启动指定 bundle-id 的 App 不触发额外 TCC（启动应用是公开能力，非文件访问）。
+- **单实例**：Container 启动时通过 `NSRunningApplication` 快速检查 + `flock()` 原子锁防止多实例竞争。Extension 通过读取 lock 文件中的 PID + `kill(pid, 0)` 校验 Container 是否存活。
 
-### 4. 心跳保活（ping / pong）
+### 4. 双向心跳保活（ping / pong）
 
-TCP loopback 上，如果 Container 进程崩溃，`NWConnection` 不一定立即报 `.failed`（半开连接），导致 Extension 把命令发到一个已死的对端、静默丢弃。心跳机制让 Extension 在有限时间内感知 Container 死亡并重连。
+TCP loopback 上，半开连接（一方崩溃但 `NWConnection` 未报 `.failed`）会导致消息发到已死对端。双向心跳让两端都能在有限时间内感知对方死亡并触发恢复。
+
+#### 4.1 Ext → Con 心跳（Extension 检测 Container 存活）
 
 ```
 Extension（.ready 后）
-    → startHeartbeat()：DispatchSource 定时器，每 heartbeatInterval(15s) 触发
+    → 立即 sendHeartbeat()（首 ping），然后 startHeartbeat()
+    → startHeartbeat()：DispatchSource 定时器
+        → 首次用 fastHeartbeatInterval(1s) 直到首个 pong 确认连接
+        → 确认后切换到 heartbeatInterval(15s)
     → 每次 tick：consecutiveMisses += 1，发 ping（meta = { pid, version }）
     → 收到 pong：pending 回调清零 consecutiveMisses
-    → consecutiveMisses >= heartbeatMaxMisses(3)（≈45s 无响应）
+    → consecutiveMisses >= heartbeatMaxMisses(3)
         → 判定 Container 死亡 → resetAndRetry()（断开 + 2s 重连）
-
-Container
-    → handleRequest 收到 method == "ping"
-        → 读 req.meta（pid/version）→ onHeartbeat 闭包（MainActor）
-            → AppState 更新 isExtensionConnected / connectedExtPID / connectedExtVersion / lastHeartbeatAt
-        → 回 pong（RPCResponse result.success = true）
 ```
 
-**ping / pong 报文**：
+#### 4.2 Con → Ext 心跳（Container 检测 Extension 存活）
+
+```
+Container（RPCServer.start 后）
+    → startPingTimer()：DispatchSource 定时器，每 heartbeatInterval(15s) 触发
+    → 每次 tick：checkConnections()
+        → 遍历 activeConnections
+        → 若 lastPong[id] 超时（> heartbeatInterval × heartbeatMaxMisses）
+            → 标记为 dead，调用 remove(conn) → onDisconnected 回调
+        → 否则发 ping 请求到 Ext
+    → 收到 Ext 的 pong（RPCShutdownNotification(method: "pong")）
+        → recordPong(conn)：记录 lastPong 时间戳
+```
+
+#### 4.3 报文格式
 
 ```json
-// ping（Extension → Container，meta 携带元数据）
+// ping（Ext→Con，meta 携带元数据）
 { "jsonrpc": "2.0", "id": 5, "method": "ping", "params": null,
   "meta": { "pid": "219", "version": "1.0" } }
-// pong（Container → Extension）
-{ "jsonrpc": "2.0", "id": 5, "result": { "success": true, "errorDescription": null, "config": null }, "error": null }
+
+// pong（Ext→Con，RPCResponse 形式）
+{ "jsonrpc": "2.0", "id": 5, "result": { "success": true }, "error": null }
+
+// ping（Con→Ext，RPCRequest 形式）
+{ "jsonrpc": "2.0", "id": 0, "method": "ping" }
+
+// pong（Con→Ext，RPCShutdownNotification 形式）
+{ "jsonrpc": "2.0", "method": "pong" }
 ```
 
-**设计要点**：
-- **计数法超时**（而非 per-pending 定时器）：每发一次 ping 先自增 `consecutiveMisses`，pong 清零；达到阈值即重连。实现极简，无需为每个请求挂 Timer。
-- **方向单向**：只有 Ext → Con 的 ping；Container 不主动 ping Ext，仅在收到 ping 时被动刷新状态（不为每个连接加定时器）。
+#### 4.4 设计要点
+
+- **双向检测**：Ext→Con 保护 Extension 不向死 Container 发命令；Con→Ext 让 Container 知道 Extension 是否存活，断开后可自动重新拉起。
+- **快速首 ping**：连接建立后前几次 ping 用 1s 间隔，首个 pong 到达后切回 15s。这让连接状态在 1-2 秒内确认，而非等待首个 15s 周期。
+- **计数法超时**：每发一次 ping 先自增 misses，pong 清零；达到阈值即重连。实现极简。
+- **自动拉起**：Con 检测到 Ext 断连后，若该 Extension 的 `autoLaunch == true`，自动调用 `pluginkit -e use` 重新拉起。
+- **`onDisconnected` 回调**：RPCServer 的所有断连路径（`.failed` 状态、读流结束、心跳超时）统一路由到 `remove()` → `onDisconnected`，确保 UI 和自动拉起逻辑只触发一次。
 - **ping 日志用 debug 级**：15 秒一次，notice 会刷屏；需要时 `log stream --debug` 才可见。
-- **元数据走 `req.meta`**：`RPCRequest` 新增可选 `meta: [String:String]?`（默认 nil，向后兼容），ping 时填 pid/version，其他 method 忽略。
-- **UI 可见**：Container 设置页区分两个状态 —— "Extension Registered"（pluginkit 系统层启用）和 "Extension Connected"（RPC 心跳层连接）。收到心跳后后者显示 Connected + Ext PID + 版本 + 最后心跳相对时间（每秒刷新）。
+- **UI 可见**：Extensions 设置页显示每个 Extension 的 Connected/Disconnected 状态 + PID + 版本 + 最后心跳相对时间（每秒刷新）。
 
 ## 与配置同步的关系
 
@@ -302,21 +335,26 @@ log stream --debug --predicate 'subsystem == "com.qi-xmu.mac-right-menu.FinderEx
 | 文件 | 职责 |
 |------|------|
 | `Shared/RPC/RPCSession.swift` | `RPCServer` + `RPCClient` + JSON-RPC wire types |
-| `Shared/Constants.swift` | `rpcHost` / `rpcPort` 常量 |
+| `Shared/Constants.swift` | `rpcHost` / `rpcPort` / 心跳参数 / `knownExtensions` / `containerLockURL` |
 | `Shared/Models/CommandRequest.swift` | 指令模型（`Action` enum 的 rawValue 用于 RPC params） |
 | `Shared/RPC/CommandResult.swift` | 返回结果模型 |
-| `mac-right-menu/ViewModels/AppState.swift` | Container 持有 `RPCServer`，实现 `executeCommand` |
-| `FinderExtension/FinderSync.swift` | Extension 持有 `RPCClient` |
+| `Shared/Models/ExtensionInfo.swift` | Extension 状态模型（enabled/connected/autoLaunch） |
+| `Shared/Models/DebugLogEntry.swift` | 调试日志条目 + `RPCActivity` 描述符 |
+| `Shared/Preferences/SharedUserDefaults.swift` | 各进程独立 UserDefaults 存储 + Extension 偏好 |
+| `mac-right-menu/ViewModels/AppState.swift` | Container 持有 `RPCServer`，实现 `executeCommand`，自动拉起 Extension |
+| `FinderExtension/FinderSync.swift` | Extension 持有 `RPCClient`，自动拉起 Container |
 | `FinderExtension/MenuActionHandler.swift` | 菜单点击 → `rpcClient.executeCommand` |
 
 ## 风险与缓解
 
 | 风险 | 等级 | 缓解 |
 |------|------|------|
-| Container 未运行/崩溃，Extension 连接失败 | 低 | RPCClient 内置 2 秒自动重连；**连接失败时自动后台拉起 Container（NSWorkspace.openApplication，节流）**；心跳 ping/pong 在 ≤45 秒内感知半开连接并触发重连 |
+| Container 未运行/崩溃，Extension 连接失败 | 低 | RPCClient 内置 2 秒自动重连；连接失败时自动后台拉起 Container（NSWorkspace.openApplication，节流）；Ext→Con 心跳在 ≤45 秒内感知半开连接并触发重连 |
+| Extension 崩溃/被杀，Container 未感知 | 低 | Con→Ext 心跳定时检测每个连接的 lastPong；超时后自动标记断连并调用 `pluginkit -e use` 重新拉起（autoLaunch 启用时） |
 | 固定端口 57421 被占用 | 低 | 当前未处理；可后续改为动态端口 + 文件传递 |
 | TCP 传输无加密 | 低 | loopback 流量不出本机，风险可接受 |
 | Container 改配置时 Extension 未连上 → 推送丢失 | 低 | Extension 下次 RPC 连接 `.ready` 时经 `getConfig` 拉取最新配置；连接前 `cachedConfig` 暂为 `.default` |
+| flock 锁文件残留（Container 异常退出） | 低 | flock(fd) 在进程退出时自动释放；`isContainerProcessAlive()` 通过 `kill(pid, 0)` 校验 PID 存活再判断 |
 
 ## 考虑点
 
