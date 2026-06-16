@@ -11,10 +11,17 @@ public struct AppMenuItem: MenuItem, @unchecked Sendable {
     public var displayName: String
     public var arguments: [String]
     public var environment: [String: String]
-    public var iconData: Data?
+
+    // iconData is intentionally NOT persisted. A single app icon's
+    // tiffRepresentation is hundreds of KB to several MB (uncompressed bitmap),
+    // which blows past UserDefaults' 4 MB per-key limit and corrupts the whole
+    // config blob. The icon is generated on demand in `var icon` instead —
+    // NSWorkspace.shared.icon(forFile:) works in both the (unsandboxed)
+    // Container and the Finder Extension sandbox without TCC prompts.
+    public var iconData: Data? { nil }
 
     private enum CodingKeys: String, CodingKey {
-        case id, title, iconName, isEnabled, appURL, displayName, arguments, environment, iconData
+        case id, title, iconName, isEnabled, appURL, displayName, arguments, environment
     }
 
     public init(appURL: URL, isEnabled: Bool = true, arguments: [String] = [], environment: [String: String] = [:]) {
@@ -27,16 +34,10 @@ public struct AppMenuItem: MenuItem, @unchecked Sendable {
         self.isEnabled = isEnabled
         self.arguments = arguments
         self.environment = environment
-        // Cache icon data so Extension doesn't need to read app bundle
-        let icon = NSWorkspace.shared.icon(forFile: appURL.path)
-        self.iconData = icon.tiffRepresentation
     }
 
     public var icon: NSImage {
-        if let data = iconData, let img = NSImage(data: data) {
-            return img
-        }
-        return NSImage(systemSymbolName: "app.fill", accessibilityDescription: nil) ?? NSImage()
+        NSWorkspace.shared.icon(forFile: appURL.path)
     }
 
     public static func == (lhs: AppMenuItem, rhs: AppMenuItem) -> Bool {

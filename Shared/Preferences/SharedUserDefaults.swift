@@ -1,112 +1,60 @@
 import Foundation
+import os
 
-/// Shared data stored in Extension's sandbox container.
-/// Extension can freely read/write inside its own container.
-/// Container App (unsandboxed) accesses via absolute path.
+private let logger = Logger(subsystem: Constants.currentBundleID, category: "shared-defaults")
+
+/// Each process has its own isolated UserDefaults store:
+/// - Container: ~/Library/Preferences/com.qi-xmu.mac-right-menu.plist (unsandboxed)
+/// - Extension: inside its own sandbox container (no TCC)
+/// Config sync happens via XPC, not shared file I/O.
 public enum SharedUserDefaults {
 
-    // MARK: - Store
-
-    static let store: PreferenceStore = {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        let path = "Library/Containers/\(Constants.extensionBundleID)/Data/Documents/SharedData.plist"
-        let url = home.appendingPathComponent(path)
-        return PreferenceStore(fileURL: url)
-    }()
+    nonisolated(unsafe) private static let defaults = UserDefaults.standard
 
     // MARK: - Menu Configuration
 
     public static var menuConfiguration: MenuConfiguration {
         get {
-            guard let data = store.data(forKey: Constants.Defaults.menuConfigKey) else {
+            guard let data = defaults.data(forKey: Constants.Defaults.menuConfigKey) else {
+                logger.notice("Config read: using default")
                 return .default
             }
-            return (try? JSONDecoder().decode(MenuConfiguration.self, from: data)) ?? .default
+            let config = (try? JSONDecoder().decode(MenuConfiguration.self, from: data)) ?? .default
+            let actions = config.actionItems.map { "\($0.actionType):\($0.isEnabled ? "on" : "off")" }.joined(separator: " ")
+            logger.notice("Config read: enabled=\(config.isEnabled) apps=\(config.appItems.count) actions=[\(actions, privacy: .public)] templates=\(config.newFileTemplates.count)")
+            return config
         }
         set {
-            guard let data = try? JSONEncoder().encode(newValue) else { return }
-            store.set(data, forKey: Constants.Defaults.menuConfigKey)
+            guard let data = try? JSONEncoder().encode(newValue) else {
+                logger.error("Config write: encode failed")
+                return
+            }
+            // UserDefaults rejects values >= 4 MB per key silently. Detect and
+            // log loudly so a regression (e.g. embedding icon data) is caught
+            // instead of silently corrupting the config store.
+            if data.count >= 4_000_000 {
+                logger.error("Config write: \(data.count) bytes exceeds the 4 MB UserDefaults limit — refusing to write. Check for unintended large fields (e.g. icon bitmaps).")
+                return
+            }
+            defaults.set(data, forKey: Constants.Defaults.menuConfigKey)
         }
     }
 
     // MARK: - Extension Enabled
 
     public static var isExtensionEnabled: Bool {
-        get { store.bool(forKey: Constants.Defaults.isExtensionEnabledKey) }
-        set { store.set(newValue, forKey: Constants.Defaults.isExtensionEnabledKey) }
+        get { defaults.bool(forKey: Constants.Defaults.isExtensionEnabledKey) }
+        set { defaults.set(newValue, forKey: Constants.Defaults.isExtensionEnabledKey) }
     }
 
     // MARK: - Command Log Only
 
     public static var commandLogOnly: Bool {
-        get { store.bool(forKey: Constants.Defaults.commandLogOnlyKey) }
-        set { store.set(newValue, forKey: Constants.Defaults.commandLogOnlyKey) }
-    }
-}
-
-// MARK: - PreferenceStore
-
-final class PreferenceStore: @unchecked Sendable {
-    private let fileURL: URL
-    private var storage: [String: Any] = [:]
-    private var cachedModificationDate: Date?
-    private let lock = NSLock()
-
-    init(fileURL: URL) {
-        self.fileURL = fileURL
-        reloadFromDisk()
+        get { defaults.bool(forKey: Constants.Defaults.commandLogOnlyKey) }
+        set { defaults.set(newValue, forKey: Constants.Defaults.commandLogOnlyKey) }
     }
 
-    func data(forKey key: String) -> Data? {
-        lock.lock()
-        reloadIfChanged()
-        let value = storage[key] as? Data
-        lock.unlock()
-        return value
-    }
-
-    func bool(forKey key: String) -> Bool {
-        lock.lock()
-        reloadIfChanged()
-        let value = (storage[key] as? NSNumber)?.boolValue ?? false
-        lock.unlock()
-        return value
-    }
-
-    func set(_ value: Any?, forKey key: String) {
-        lock.lock()
-        reloadIfChanged()
-        if let value { storage[key] = value } else { storage.removeValue(forKey: key) }
-        persist()
-        lock.unlock()
-    }
-
-    func set(_ value: Bool, forKey key: String) {
-        set(NSNumber(value: value), forKey: key)
-    }
-
-    private func reloadIfChanged() {
-        guard let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
-              let modDate = attrs[.modificationDate] as? Date else { return }
-        if cachedModificationDate == nil || modDate > cachedModificationDate! {
-            reloadFromDisk()
-            cachedModificationDate = modDate
-        }
-    }
-
-    private func reloadFromDisk() {
-        if let dict = NSDictionary(contentsOf: fileURL) as? [String: Any] {
-            storage = dict
-        }
-    }
-
-    private func persist() {
-        let dict = storage as NSDictionary
-        try? FileManager.default.createDirectory(
-            at: fileURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        dict.write(to: fileURL, atomically: true)
-        cachedModificationDate = Date()
+    public static func forceReload() {
+        defaults.synchronize()
     }
 }

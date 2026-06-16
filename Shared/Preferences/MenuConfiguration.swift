@@ -42,8 +42,5 @@ extension ActionMenuItem {
     ]
 }
 
-// MARK: - Sendable conformances
-
-extension AppMenuItem: @unchecked Sendable {}
-extension ActionMenuItem: @unchecked Sendable {}
-extension NewFileTemplate: @unchecked Sendable {}
+// Sendable conformances are declared at each model's definition site
+// (Shared/Models/*.swift), so they are not restated here.
