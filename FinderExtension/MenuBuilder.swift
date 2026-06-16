@@ -38,14 +38,14 @@ enum MenuBuilder {
         let enabledApps = configuration.appItems.filter(\.isEnabled)
         let enabledActions = configuration.actionItems.filter(\.isEnabled)
 
-        // ── Section: New File ──
+        // ── Section: New File (tag: 0–999) ──
         if enabledActions.contains(where: { $0.actionType == .newFile }) {
-            let newFileTemplates = configuration.newFileTemplates
-            if !newFileTemplates.isEmpty {
+            let templates = configuration.newFileTemplates
+            if !templates.isEmpty {
                 let submenuItem = NSMenuItem(title: String(localized: "New File"), action: nil, keyEquivalent: "")
                 submenuItem.image = icon("doc.badge.plus")
                 let submenu = NSMenu(title: String(localized: "New File"))
-                for (index, template) in newFileTemplates.enumerated() {
+                for (index, template) in templates.enumerated() {
                     let item = NSMenuItem(title: template.fileName, action: handlerSelector, keyEquivalent: "")
                     item.target = target
                     item.tag = Constants.TagBase.newFile.rawValue + index
@@ -57,7 +57,7 @@ enum MenuBuilder {
             }
         }
 
-        // ── Section: Open With (if there are configured apps) ──
+        // ── Section: Open With (tag: 1000–1999) ──
         if !enabledApps.isEmpty {
             if enabledApps.count == 1, let app = enabledApps.first {
                 let item = NSMenuItem(
@@ -69,15 +69,16 @@ enum MenuBuilder {
                 item.tag = Constants.TagBase.appItem.rawValue
                 item.image = app.icon
                 item.isEnabled = hasSelection
+                item.representedObject = app
                 menu.addItem(item)
             } else {
                 let submenuItem = NSMenuItem(title: String(localized: "Open With"), action: nil, keyEquivalent: "")
                 submenuItem.image = icon("menubar.dock.rectangle")
                 let submenu = NSMenu(title: String(localized: "Open With"))
-                for app in enabledApps {
+                for (index, app) in enabledApps.enumerated() {
                     let appItem = NSMenuItem(title: app.displayName, action: handlerSelector, keyEquivalent: "")
                     appItem.target = target
-                    appItem.tag = Constants.TagBase.appItem.rawValue
+                    appItem.tag = Constants.TagBase.appItem.rawValue + index
                     appItem.image = app.icon
                     appItem.representedObject = app
                     appItem.isEnabled = hasSelection
@@ -88,43 +89,23 @@ enum MenuBuilder {
             }
         }
 
-        // ── Section: Copy Actions ──
-        for actionItem in enabledActions {
-            switch actionItem.actionType {
-            case .copyPath, .copyFileName:
+        // ── Section: 操作 (tag: 2000–2999) ──
+        let operationActions: [ActionType] = [.copyPath, .copyFileName, .toggleHidden, .openParent]
+        let hasOps = enabledActions.contains(where: { operationActions.contains($0.actionType) })
+        if hasOps {
+            for actionItem in enabledActions where operationActions.contains(actionItem.actionType) {
+                let tag: Int
+                switch actionItem.actionType {
+                case .copyPath:     tag = Constants.TagBase.copyPath.rawValue
+                case .copyFileName: tag = Constants.TagBase.copyFileName.rawValue
+                case .toggleHidden: tag = Constants.TagBase.toggleHidden.rawValue
+                case .openParent:   tag = Constants.TagBase.openParent.rawValue
+                default:            continue
+                }
                 let item = NSMenuItem(title: actionItem.title, action: handlerSelector, keyEquivalent: "")
                 item.target = target
-                item.tag = Constants.TagBase.copyPath.rawValue + (actionItem.actionType == .copyFileName ? 1 : 0)
-                item.image = actionItem.iconName.flatMap { icon($0) } ?? icon("document.on.clipboard")
-                item.isEnabled = hasSelection
-                menu.addItem(item)
-            default:
-                break
-            }
-        }
-
-        // ── Section: File Operations ──
-        let fileOps: [ActionType] = [.toggleHidden]
-        let hasFileOps = enabledActions.contains(where: { fileOps.contains($0.actionType) })
-        if hasFileOps {
-            for actionItem in enabledActions where fileOps.contains(actionItem.actionType) {
-                let item = NSMenuItem(title: actionItem.title, action: handlerSelector, keyEquivalent: "")
-                item.target = target
-                item.tag = Constants.TagBase.toggleHidden.rawValue
+                item.tag = tag
                 item.image = actionItem.iconName.flatMap { icon($0) } ?? icon("gearshape")
-                item.isEnabled = hasSelection
-                menu.addItem(item)
-            }
-        }
-
-        // ── Section: Navigation ──
-        let hasNav = enabledActions.contains(where: { $0.actionType == .openParent })
-        if hasNav {
-            for actionItem in enabledActions where actionItem.actionType == .openParent {
-                let item = NSMenuItem(title: actionItem.title, action: handlerSelector, keyEquivalent: "")
-                item.target = target
-                item.tag = Constants.TagBase.openParent.rawValue
-                item.image = actionItem.iconName.flatMap { icon($0) } ?? icon("arrow.up.doc")
                 item.isEnabled = hasSelection
                 menu.addItem(item)
             }
