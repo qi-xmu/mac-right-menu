@@ -13,3 +13,8 @@ Config/Local.xcconfig
 .mimocode
 
 build
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
