@@ -104,3 +104,40 @@ def action_name(action: int) -> str:
         6: "shell",
     }
     return names.get(action, f"unknown({action})")
+
+
+# ---------------------------------------------------------------------------
+# Framing — line-delimited JSON (matching RPCSession.swift sendJSON / readLines)
+# ---------------------------------------------------------------------------
+
+def encode_message(msg: dict[str, Any]) -> bytes:
+    """Encode a JSON-RPC message to wire format: compact JSON + \\n."""
+    # separators=(',',':') produces compact output — no spaces after , or :
+    # This matches Swift's JSONEncoder.outputFormatting = [] (default, compact).
+    body = json.dumps(msg, ensure_ascii=False, separators=(",", ":"))
+    return body.encode("utf-8") + b"\n"
+
+
+def decode_messages(buf: bytes) -> tuple[list[dict[str, Any]], bytes]:
+    """Split buffer on \\n, parse each complete line as JSON.
+
+    Returns (parsed_messages, leftover_bytes).
+    Invalid JSON lines are silently skipped (the connection stays alive).
+    Empty lines (just \\n) are also skipped.
+    """
+    messages: list[dict[str, Any]] = []
+    remaining = buf
+
+    while b"\n" in remaining:
+        line, remaining = remaining.split(b"\n", 1)
+        if not line:
+            # Skip empty lines (just \n with nothing before)
+            continue
+        try:
+            msg = json.loads(line.decode("utf-8"))
+            messages.append(msg)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            # Malformed line — skip and continue
+            pass
+
+    return messages, remaining
