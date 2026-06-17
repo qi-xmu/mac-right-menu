@@ -1,0 +1,35 @@
+{
+  "isEnabled": true,
+  "appsSectionEnabled": true,
+  "appItems": [
+    {
+      "id": "/Applications/Visual Studio Code.app",
+      "title": "Open with VS Code",
+      "isEnabled": true,
+      "appURL": "file:///Applications/Visual%20Studio%20Code.app",
+      "displayName": "Visual Studio Code",
+      "arguments": [],
+      "environment": {}
+    },
+    {
+      "id": "/Applications/Terminal.app",
+      "title": "Open with Terminal",
+      "isEnabled": true,
+      "appURL": "file:///Applications/Terminal.app",
+      "displayName": "Terminal",
+      "arguments": [],
+      "environment": {}
+    }
+  ],
+  "actionItems": [
+    {"actionType": "newFile", "isEnabled": true},
+    {"actionType": "copyPath", "isEnabled": true},
+    {"actionType": "copyFileName", "isEnabled": true},
+    {"actionType": "toggleHidden", "isEnabled": true}
+  ],
+  "newFileTemplates": [
+    {"fileName": "", "fileExtension": "txt", "defaultContent": "", "isEnabled": true},
+    {"fileName": "", "fileExtension": "md", "defaultContent": "", "isEnabled": true},
+    {"fileName": "", "fileExtension": "swift", "defaultContent": "import Foundation\n\n", "isEnabled": true}
+  ]
+}
