@@ -6,7 +6,7 @@ platforms = ["osx-arm64"]
 version = "0.1.0"
 
 [tasks]
-rpc-debug = "python tests/rpc-debug/rpc-debug-server.py"
+rpc-debug = "python tests/rpc-debug/rpc_debug_server.py"
 
 [dependencies]
 python = ">=3.12"
