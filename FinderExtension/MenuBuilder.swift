@@ -4,16 +4,46 @@ import os.log
 private let logger = Logger(subsystem: Constants.extensionBundleID, category: "menu-builder")
 
 /// Builds the NSMenu hierarchy from MenuConfiguration.
+///
+/// Performance: `menu(for:)` is invoked by Finder on EVERY right-click, and the
+/// cost of building a menu is dominated by image generation — not NSMenuItem
+/// allocation. Two paths are expensive:
+///   1. `NSWorkspace.shared.icon(forFile:)` — reads the app bundle off disk
+///      and rasterizes its icon.
+///   2. `icon(_:)` below — `NSImage(systemSymbolName:)` + `lockFocus` to bake a
+///      tinted bitmap. Each call re-decodes the symbol and re-renders pixels.
+/// Both are pure functions of their input (file path / symbol name) and never
+/// change within a process lifetime unless the source file changes, so they are
+/// memoized here. NSMenuItem construction itself is cheap pointer wiring and is
+/// left to run each call — that keeps menu(for:) free of any cross-thread menu
+/// object reuse concerns.
 enum MenuBuilder {
 
         private static var isDarkMode: Bool {
             UserDefaults.standard.string(forKey: "AppleInterfaceStyle") == "Dark"
         }
 
+        /// Cache of tinted SF Symbol bitmaps keyed by symbol name. Values are
+        /// rebuilt only on appearance (dark/light) flip; in steady state every
+        /// right-click hits the cache and skips `lockFocus` rasterization.
+        /// Only ever touched from the Finder thread (menu(for:) is serialized
+        /// by Finder, and invalidateSymbolCache() is dispatched on .main), so
+        /// `nonisolated(unsafe)` is sound here without a lock.
+        nonisolated(unsafe) private static var symbolCache: [String: NSImage] = [:]
+
+        /// Cache of per-file icons from `NSWorkspace.shared.icon(forFile:)`,
+        /// keyed by absolute path. App icons live in bundles on disk; their
+        /// icon never changes while the app is installed, so caching avoids a
+        /// disk read + rasterization on every right-click. Same single-thread
+        /// access guarantee as `symbolCache`.
+        nonisolated(unsafe) private static var appIconCache: [String: NSImage] = [:]
+
         private static func icon(_ name: String) -> NSImage {
+            if let cached = symbolCache[name] { return cached }
             let size = NSSize(width: 18, height: 18)
             let img = NSImage(size: size)
             guard let symbol = NSImage(systemSymbolName: name, accessibilityDescription: nil) else {
+                symbolCache[name] = img
                 return img
             }
             let color: NSColor = isDarkMode ? .white : .black
@@ -23,7 +53,25 @@ enum MenuBuilder {
             img.lockFocus()
             (tinted ?? symbol).draw(in: NSRect(origin: .zero, size: size))
             img.unlockFocus()
+            symbolCache[name] = img
             return img
+        }
+
+        /// Resolve an app icon, using the cached bitmap when the path was seen
+        /// before. Falls back to a live `NSWorkspace.shared.icon(forFile:)`
+        /// call (and caches it) on miss.
+        private static func appIcon(forPath path: String) -> NSImage {
+            if let cached = appIconCache[path] { return cached }
+            let img = NSWorkspace.shared.icon(forFile: path)
+            appIconCache[path] = img
+            return img
+        }
+
+        /// Drop all cached images. Called when the appearance flips (dark/light)
+        /// so symbol tinting is regenerated for the new mode. App icons are
+        /// appearance-independent and kept.
+        static func invalidateSymbolCache() {
+            symbolCache.removeAll()
         }
 
     static func buildMenu(
@@ -39,6 +87,10 @@ enum MenuBuilder {
         let enabledActions = configuration.actionItems.filter(\.isEnabled)
 
         // ── Section: New File (tag: 0–999) ──
+        // Available in BOTH selection and container (empty-space) contexts:
+        // creating a new file is the primary action users want when they
+        // right-click in an empty folder. The handler falls back to
+        // `targetURL` (the folder itself) when nothing is selected.
         if enabledActions.contains(where: { $0.actionType == .newFile }) {
             // Only enabled templates appear, and their tags are numbered
             // consecutively over this filtered list (matching AppState, which
@@ -65,6 +117,10 @@ enum MenuBuilder {
 
         // ── Section: Open With (tag: 1000–1999) ──
         // Gated by the section master switch in addition to per-app enabled.
+        // Built into the cached menu unconditionally (so config changes don't
+        // require a rebuild per click); `refreshSelectionState` hides the whole
+        // section when there's no selection, since opening a file with an app
+        // requires a target file.
         if configuration.appsSectionEnabled, !enabledApps.isEmpty {
             if enabledApps.count == 1, let app = enabledApps.first {
                 let item = NSMenuItem(
@@ -74,7 +130,7 @@ enum MenuBuilder {
                 )
                 item.target = target
                 item.tag = Constants.TagBase.appItem.rawValue
-                item.image = app.icon
+                item.image = appIcon(forPath: app.appURL.path)
                 item.isEnabled = hasSelection
                 item.representedObject = app
                 menu.addItem(item)
@@ -86,7 +142,7 @@ enum MenuBuilder {
                     let appItem = NSMenuItem(title: app.displayName, action: handlerSelector, keyEquivalent: "")
                     appItem.target = target
                     appItem.tag = Constants.TagBase.appItem.rawValue + index
-                    appItem.image = app.icon
+                    appItem.image = appIcon(forPath: app.appURL.path)
                     appItem.representedObject = app
                     appItem.isEnabled = hasSelection
                     submenu.addItem(appItem)
@@ -97,6 +153,9 @@ enum MenuBuilder {
         }
 
         // ── Section: 操作 (tag: 2000–2999) ──
+        // Same rationale as Open With: built unconditionally into the cached
+        // menu; `refreshSelectionState` hides each item when nothing is picked,
+        // since Copy Path / Copy Name / Toggle Hidden all need a target file.
         let operationActions: [ActionType] = [.copyPath, .copyFileName, .toggleHidden]
         let hasOps = enabledActions.contains(where: { operationActions.contains($0.actionType) })
         if hasOps {
@@ -118,5 +177,34 @@ enum MenuBuilder {
         }
 
         return menu
+    }
+
+    /// Refresh the selection-dependent state of a cached NSMenu in place.
+    /// Called from `menu(for:)` on every right-click — the only thing that
+    /// changes between clicks for a fixed config is whether a file is picked.
+    ///
+    /// - Top-level file-dependent items (Open With section header, the single-app
+    ///   "Open in X" item, and each operation action) are hidden when there's no
+    ///   selection. Hiding the header hides its submenu too.
+    /// - Leaf items under a visible section get `isEnabled` toggled so they look
+    ///   live vs. disabled-grayed without rebuilding.
+    ///
+    /// Tag ranges (see Constants.TagBase) identify which items are file-dependent:
+    /// New File (0–999) is always shown; Open With (1000–1999) and the operation
+    /// actions (2000–2999) depend on a selection.
+    static func refreshSelectionState(_ menu: NSMenu, hasSelection: Bool) {
+        for item in menu.items {
+            let tag = item.tag
+            if tag >= Constants.TagBase.appItem.rawValue && tag < Constants.TagBase.shell.rawValue {
+                // Open With section (1000–1999) — header or single-app leaf.
+                item.isHidden = !hasSelection
+                item.isEnabled = hasSelection
+            } else if tag >= Constants.TagBase.copyPath.rawValue && tag < Constants.TagBase.shell.rawValue {
+                // Operation actions (2000–2999): copyPath / copyFileName / toggleHidden.
+                item.isHidden = !hasSelection
+                item.isEnabled = hasSelection
+            }
+            // New File (0–999) and anything else: leave as-is.
+        }
     }
 }

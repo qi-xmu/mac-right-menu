@@ -24,16 +24,37 @@ for arg in "$@"; do
     esac
 done
 
+# ── 0. 签名前置检查 ────────────────────────────────────
+# Finder Sync 扩展必须由带 Team ID 的开发证书签名 + 嵌入
+# com.apple.security.finder.sync entitlement，pkd 才会加载它。
+# 历史上这里曾用 CODE_SIGN_IDENTITY="-" + CODE_SIGNING_ALLOWED=NO
+# 走 ad-hoc / linker-signed，结果 Release 扩展根本进不了 pluginkit
+# 注册表，Finder 右键菜单也就永远空着。强制要求 Local.xcconfig 提供
+# DEVELOPMENT_TEAM，从根上杜绝再次回退到 ad-hoc。
+XCCONFIG="Config/Local.xcconfig"
+if [ ! -f "$XCCONFIG" ]; then
+    echo "❌ Missing $XCCONFIG."
+    echo "   cp Config/Local.example.xcconfig $XCCONFIG"
+    echo "   then set DEVELOPMENT_TEAM to your Apple Developer Team ID."
+    exit 1
+fi
+if ! grep -qE "^DEVELOPMENT_TEAM[[:space:]]*=[[:space:]]*[A-Z0-9]+$" "$XCCONFIG"; then
+    echo "❌ DEVELOPMENT_TEAM is not set in $XCCONFIG."
+    echo "   Finder Sync extension requires a real signing identity; ad-hoc /"
+    echo "   linker-signed bundles are rejected by pkd and never register."
+    exit 1
+fi
+
 # ── 1. 构建 ──────────────────────────────────────────────
-echo "==> Building Release..."
+# Automatic signing driven by Config/Local.xcconfig (DEVELOPMENT_TEAM +
+# CODE_SIGN_STYLE). The Xcode project already declares entitlements for both
+# the Container and FinderExtension targets; Automatic signing embeds them.
+echo "==> Building Release (Automatic signing)..."
 xcodebuild build \
     -project "$PROJECT" \
     -scheme "$SCHEME" \
     -configuration "$CONFIGURATION" \
-    -derivedDataPath "$DERIVED_DATA" \
-    CODE_SIGN_IDENTITY="-" \
-    CODE_SIGNING_REQUIRED=NO \
-    CODE_SIGNING_ALLOWED=NO
+    -derivedDataPath "$DERIVED_DATA"
 
 # 找到构建产物
 BUILD_APP="$DERIVED_DATA/Build/Products/$CONFIGURATION/$APP_NAME.app"

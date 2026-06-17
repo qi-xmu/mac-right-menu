@@ -80,7 +80,10 @@ struct GeneralSettingsTab: View {
                     }
 
                     Button {
-                        NSApplication.shared.terminate(nil)
+                        appState.shutdownExtensions()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            NSApplication.shared.terminate(nil)
+                        }
                     } label: {
                         Label(String(localized: "Quit"), systemImage: "xmark.square")
                     }
