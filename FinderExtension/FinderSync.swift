@@ -43,14 +43,19 @@ class FinderSyncExtension: FIFinderSync, @unchecked Sendable {
 
         // Appearance flips (Light↔Dark) change how MenuBuilder tints SF Symbol
         // icons. Since the cached menu bakes those bitmaps into its items, a
-        // theme flip requires a rebuild (icons are embedded in the cached
-        // NSMenu items, not regenerated per click).
+        // theme flip requires dropping the symbol cache and rebuilding. Both
+        // must run on the main thread: NSImage.lockFocus and
+        // NSWorkspace.shared.icon(forFile:) are main-thread-only APIs, and the
+        // cached menu's items are AppKit objects. The handler below is already
+        // dispatched on .main by the observer's queue param, but rebuild also
+        // does UI work, so it's routed through rebuildOnMain for clarity.
         DistributedNotificationCenter.default().addObserver(
             forName: NSNotification.Name("AppleInterfaceThemeChangedNotification"),
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.rebuildCachedMenu()
+            MenuBuilder.invalidateSymbolCache()
+            self?.rebuildOnMain()
         }
 
         // Refresh the in-memory cache from both channels AND rebuild the cached
@@ -59,6 +64,12 @@ class FinderSyncExtension: FIFinderSync, @unchecked Sendable {
         // background queue; cachedConfig is read in menu(for:) on the Finder
         // thread, so the write is guarded. MenuConfiguration is a value type,
         // so the swap is safe.
+        //
+        // Warmup + rebuild both hop to the main thread: warmup fills the icon
+        // caches first (so buildMenu hits the cache instead of rasterizing on
+        // Finder's menu-critical path), then rebuild constructs the cached
+        // NSMenu. This also fixes a latent bug where rebuildCachedMenu used to
+        // call NSWorkspace.icon/lockFocus from this RPC background queue.
         rpcClient.setConfigChangeHandler { [weak self] newConfig in
             guard let self else { return }
             self.configLock.lock()
@@ -66,9 +77,12 @@ class FinderSyncExtension: FIFinderSync, @unchecked Sendable {
             self.configLock.unlock()
             let actions = newConfig.actionItems.map { "\($0.actionType):\($0.isEnabled ? "on" : "off")" }.joined(separator: " ")
             logger.notice("[Ext] Config applied: enabled=\(newConfig.isEnabled) apps=\(newConfig.appItems.count) actions=[\(actions, privacy: .public)] templates=\(newConfig.newFileTemplates.count)")
-            // Rebuild the cached NSMenu so subsequent right-clicks reflect the
-            // new structure (added/removed apps, toggled sections, ...).
-            self.rebuildCachedMenu()
+            // Warm icon caches on the main thread, THEN rebuild the menu so
+            // buildMenu's icon lookups all hit cache. Warmup is idempotent.
+            DispatchQueue.main.async {
+                MenuBuilder.warmupCaches(for: newConfig)
+                self.rebuildCachedMenu()
+            }
         }
 
         // Handle Container shutdown or max-retry exhaustion: exit the process.
@@ -87,11 +101,23 @@ class FinderSyncExtension: FIFinderSync, @unchecked Sendable {
 
     // MARK: - Cached Menu
 
+    /// Hop to the main thread, then rebuild the cached NSMenu. Main-thread
+    /// routing is required because buildMenu calls `NSWorkspace.icon(forFile:)`
+    /// and `NSImage.lockFocus` — both main-thread-only AppKit APIs.
+    private func rebuildOnMain() {
+        DispatchQueue.main.async { [weak self] in
+            self?.rebuildCachedMenu()
+        }
+    }
+
     /// Build (or rebuild) the cached NSMenu from the current cachedConfig.
     /// Called when config changes or the appearance flips. Builds the FULL menu
     /// (all sections) so a single object can serve both items and container
     //  contexts — `menu(for:)` hides the file-dependent sections when there's
     /// no selection.
+    ///
+    /// - Important: must be called on the main thread (icon APIs require it).
+    ///   Use `rebuildOnMain()` from non-main contexts.
     private func rebuildCachedMenu() {
         configLock.lock()
         let config = cachedConfig

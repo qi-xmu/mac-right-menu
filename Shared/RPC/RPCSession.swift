@@ -329,7 +329,11 @@ public final class RPCServer: @unchecked Sendable {
         }
         logger.notice("[Con] RPCServer: broadcast configDidChange to \(snapshot.count) connection(s)")
         snapshot.forEach { sendJSON(note, on: $0) }
-        onActivity(RPCActivity(kind: .rpc, direction: .send, method: "configDidChange", summary: "configDidChange → \(snapshot.count) conn(s)"))
+        onActivity(RPCActivity(
+            kind: .rpc, direction: .send, method: "configDidChange",
+            summary: "configDidChange → \(snapshot.count) conn(s)",
+            detail: "apps=\(note.params.appItems.count) actions=\(note.params.actionItems.count) templates=\(note.params.newFileTemplates.count) enabled=\(note.params.isEnabled)"
+        ))
     }
 
     /// Push a `shutdown` notification to every connected Extension so they can
@@ -403,19 +407,22 @@ public final class RPCServer: @unchecked Sendable {
             return
         }
         logger.notice("[Con] RPCServer: dispatch \(req.method, privacy: .public) id=\(req.id)")
-        onActivity(RPCActivity(kind: .rpc, direction: .recv, method: req.method, rpcID: req.id, summary: recvSummary(for: req)))
+        let (summary, detail) = recvSummary(for: req)
+        onActivity(RPCActivity(kind: .rpc, direction: .recv, method: req.method, rpcID: req.id, summary: summary, detail: detail))
         switch req.method {
-        case "ping":
-            // Heartbeat from the Extension. Reply with pong and surface the
-            // Extension's metadata (pid/version) so AppState can update the
-            // connection status shown in the UI.
+        case "hello":
+            // One-shot identity handshake from the Extension (sent right after
+            // connect). Carries pid/version so the Container can update the
+            // connection status UI and cancel any pending delayed Ext wake.
+            // Replaces the old Ext→Con ping heartbeat: heartbeat direction is
+            // now Con→Ext only.
             let meta = req.meta
             Task { @MainActor in onHeartbeat(meta) }
             recordPong(connection)
             let resp = RPCResponse(jsonrpc: "2.0", id: req.id,
                                    result: RPCResult(CommandResult(success: true)), error: nil)
             sendJSON(resp, on: connection)
-            onActivity(RPCActivity(kind: .rpc, direction: .send, method: "response", rpcID: req.id, summary: "ping response", isHeartbeat: true))
+            onActivity(RPCActivity(kind: .rpc, direction: .send, method: "response", rpcID: req.id, summary: "hello ack", detail: meta.flatMap { "  pid=\($0["pid"] ?? "?") version=\($0["version"] ?? "?")"}))
         case "getConfig":
             // Hand the full current config back to the Extension. Runs on the
             // main actor since AppState.configuration lives there.
@@ -424,7 +431,11 @@ public final class RPCServer: @unchecked Sendable {
                 let resp = RPCResponse(jsonrpc: "2.0", id: req.id,
                                        result: RPCResult(config: config), error: nil)
                 sendJSON(resp, on: connection)
-                onActivity(RPCActivity(kind: .rpc, direction: .send, method: "response", rpcID: req.id, summary: "getConfig response"))
+                onActivity(RPCActivity(
+                    kind: .rpc, direction: .send, method: "response", rpcID: req.id,
+                    summary: "getConfig response",
+                    detail: "apps=\(config.appItems.count) actions=\(config.actionItems.count) templates=\(config.newFileTemplates.count) enabled=\(config.isEnabled)"
+                ))
             }
         default: // "executeCommand"
             guard let params = req.params else {
@@ -439,25 +450,61 @@ public final class RPCServer: @unchecked Sendable {
                 let resp = RPCResponse(jsonrpc: "2.0", id: req.id, result: RPCResult(result), error: nil)
                 sendJSON(resp, on: connection)
                 let ok = result.success ? "ok" : "fail"
-                onActivity(RPCActivity(kind: .rpc, direction: .send, method: "response", rpcID: req.id, summary: "executeCommand response (\(ok))"))
+                onActivity(RPCActivity(
+                    kind: .rpc, direction: .send, method: "response", rpcID: req.id,
+                    summary: "executeCommand response (\(ok))",
+                    detail: result.errorDescription.map { "error: \($0)" }
+                ))
             }
         }
     }
 
-    /// One-line summary of a received request for the Debug Log.
-    private func recvSummary(for req: RPCRequest) -> String {
+    /// One-line summary + multi-line detail of a received request, for the
+    /// Debug Log. The summary stays compact for the list row; the detail
+    /// carries the full payload (file paths, command string) so it's visible
+    /// on expand / hover / export without flooding the compact view.
+    private func recvSummary(for req: RPCRequest) -> (summary: String, detail: String?) {
         switch req.method {
         case "executeCommand":
-            if let p = req.params {
-                return "action=\(p.action) files=\(p.files.count)"
+            guard let p = req.params else { return ("executeCommand (no params)", nil) }
+            // Map the numeric action to a readable name so the log row says
+            // "action=shell" instead of "action=2".
+            let actionName: String
+            switch p.action {
+            case 0: actionName = "shell"
+            case 1: actionName = "openWithApp"
+            case 2: actionName = "newFile"
+            case 3: actionName = "copyPath"
+            case 4: actionName = "copyFileName"
+            case 5: actionName = "toggleHidden"
+            default: actionName = "unknown(\(p.action))"
             }
-            return "executeCommand (no params)"
-        case "ping":
-            return "ping"
+            let summary = "action=\(actionName) files=\(p.files.count)"
+            // Detail: list every file path (not just the count) + the command
+            // string if present. These are the values that actually matter when
+            // debugging "why did this command fail / open the wrong app".
+            var lines = p.files.enumerated().map { idx, path in
+                "  [\(idx)] \(path)"
+            }
+            if let cmd = p.command, !cmd.isEmpty {
+                lines.append("  command: \(cmd)")
+            }
+            if let extra = p.extra, !extra.isEmpty {
+                let kv = extra.map { "\($0)=\($1)" }.joined(separator: ", ")
+                lines.append("  extra: \(kv)")
+            }
+            return (summary, lines.joined(separator: "\n"))
+        case "hello":
+            // hello carries the Extension's pid/version (sent once on connect).
+            if let meta = req.meta, !meta.isEmpty {
+                let kv = meta.map { "\($0)=\($1)" }.joined(separator: ", ")
+                return ("hello", "  meta: \(kv)")
+            }
+            return ("hello", nil)
         case "getConfig":
-            return "getConfig"
+            return ("getConfig", nil)
         default:
-            return req.method
+            return (req.method, nil)
         }
     }
 }
@@ -473,16 +520,14 @@ public final class RPCClient: @unchecked Sendable {
     private var onConfigChange: (@Sendable (MenuConfiguration) -> Void)?
     private var onShutdown: (@Sendable () -> Void)?
 
-    // Heartbeat: a repeating timer fires every `heartbeatInterval`; each tick
-    // sends a ping and bumps `consecutiveMisses`. Receiving a pong clears the
-    // counter. Once it reaches `heartbeatMaxMisses`, the Container is presumed
-    // dead and we reconnect.
-    private var heartbeatTimer: DispatchSourceTimer?
-    private var consecutiveMisses: Int = 0
-    // Fast heartbeat mode: on first connect we ping every 1s until the first
-    // pong arrives, then switch to the normal interval.
-    private var heartbeatConfirmed: Bool = false
-    private static let fastHeartbeatInterval: TimeInterval = 1
+    // Heartbeat direction is Con→Ext only: the Container pings every
+    // `heartbeatInterval` and the Extension replies `pong`. The Extension no
+    // longer runs its own ping timer — a dead Container is detected by TCP
+    // stream termination in `receiveLoop` (onComplete → resetAndRetry), which
+    // is reliable without an application-layer poll. On connect the Extension
+    // sends a one-shot `hello` carrying pid/version so the Container can update
+    // the connection status UI; that replaces the meta that used to ride on the
+    // Ext→Con ping.
 
     // Container auto-launch: when the connection fails we ask LaunchServices to
     // open the Container app. Throttled so repeated retries (every 2s) don't
@@ -500,8 +545,26 @@ public final class RPCClient: @unchecked Sendable {
 
     // Retry limit: after `maxFailedRetries` consecutive failures the Extension
     // gives up and exits. Counter resets on successful connect.
+    // BUT giving up also requires `maxFailedRetryWindow` seconds to have
+    // elapsed since the first failure (see `giveUpGuard`): a slow Container
+    // launch shouldn't be misclassified as fatal just because each
+    // connection-refused during startup bumps the counter.
     private var failedRetries: Int = 0
     static let maxFailedRetries = 3
+    /// Wall-clock grace window during which retry-cap exhaustion does NOT cause
+    /// a give-up. Tuned to comfortably exceed a cold Container launch + RPC
+    //  port bind (typically 2–4s on modern macOS).
+    static let maxFailedRetryWindow: TimeInterval = 15
+    /// Timestamp of the first failure in the current streak; nil once a
+    /// successful connect resets the streak.
+    private var firstFailureTime: Date?
+
+    // Retry cadence. `postLaunchRetryInterval` is used right after we've asked
+    // LaunchServices to bring the Container up — long enough for Con to start
+    // and bind its port. `retryInterval` is used otherwise (e.g. transient
+    // drops when Con is presumably already running).
+    static let postLaunchRetryInterval: TimeInterval = 3
+    static let retryInterval: TimeInterval = 2
 
     public init() {}
 
@@ -543,7 +606,7 @@ public final class RPCClient: @unchecked Sendable {
                 self.lock.lock()
                 self.containerLaunchRequested = false
                 self.failedRetries = 0
-                self.heartbeatConfirmed = false
+                self.firstFailureTime = nil
                 let wake = self.pendingContainerWake
                 self.pendingContainerWake = nil
                 self.lock.unlock()
@@ -554,22 +617,31 @@ public final class RPCClient: @unchecked Sendable {
                 // process keeps its own UserDefaults, so the init-time read is
                 // unreliable).
                 self.fetchConfig()
-                // Send an immediate heartbeat so Con knows we're alive right away,
-                // then start fast heartbeat (1s) until first pong confirms the
-                // connection, at which point we switch to normal interval (15s).
-                self.sendHeartbeat()
-                self.startHeartbeat()
+                // One-shot identity handshake: tell the Container our pid/version
+                // so it can update the connection status UI and cancel any pending
+                // delayed Ext wake. This replaces the old Ext→Con ping heartbeat:
+                // the heartbeat direction is now Con→Ext only (Con pings, Ext
+                // pongs), so Ext no longer needs a repeating timer — a dead Con
+                // is detected by TCP stream termination in receiveLoop instead.
+                self.sendHello()
             case .waiting(let err):
-                // NWConnection stays in .waiting for connection-refused instead
-                // of transitioning to .failed. Cancel and retry manually so the
-                // auto-launch mechanism can kick in.
+                // NWConnection parks in .waiting for connection-refused instead
+                // of transitioning to .failed. We just cancel here and let the
+                // `.cancelled` case below handle exactly ONE resetAndRetry —
+                // doing resetAndRetry here AND again in .cancelled doubled the
+                // failure count per attempt and short-circuited the Container
+                // launch (the 2nd pass saw containerLaunchRequested=true and
+                // skipped it, so Con was never actually woken).
                 logger.warning("[Ext] RPCClient: connection waiting — \(err.localizedDescription, privacy: .public)")
-                self?.stopHeartbeat()
-                self?.resetAndRetry()
                 conn.cancel()
-            case .failed, .cancelled:
-                logger.warning("RPCClient: connection \(String(describing: state))")
-                self?.stopHeartbeat()
+            case .failed:
+                logger.warning("RPCClient: connection failed")
+                self?.resetAndRetry()
+            case .cancelled:
+                // Triggered by our `conn.cancel()` in the .waiting branch above
+                // (or by teardown). Treat it as the single failure event and run
+                // resetAndRetry once here — not also in .waiting.
+                logger.warning("RPCClient: connection cancelled")
                 self?.resetAndRetry()
             default:
                 break
@@ -635,79 +707,31 @@ public final class RPCClient: @unchecked Sendable {
         sendJSON(req, on: conn)
     }
 
-    // MARK: - Heartbeat
+    // MARK: - Identity handshake
 
-    private func startHeartbeat() {
-        stopHeartbeat()
-        consecutiveMisses = 0
+    /// One-shot `hello` sent right after connect. Carries the Extension's
+    /// pid/version so the Container can populate the connection status UI and
+    /// cancel any pending delayed Ext wake. Fire-and-forget: we don't register
+    /// a `pending[id]` callback because Con's reply (a plain RPCResponse with
+    /// `success: true`) carries no information Ext needs — Con already pings Ext
+    /// for liveness, and a dropped `hello` simply means Con keeps showing the
+    /// Extension as "last seen" until its own ping elicits a pong.
+    private func sendHello() {
         lock.lock()
-        let confirmed = heartbeatConfirmed
-        lock.unlock()
-        let interval = confirmed ? Constants.heartbeatInterval : Self.fastHeartbeatInterval
-        let timer = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
-        timer.schedule(deadline: .now() + interval, repeating: interval)
-        timer.setEventHandler { [weak self] in self?.sendHeartbeat() }
-        timer.resume()
-        lock.lock()
-        heartbeatTimer = timer
-        lock.unlock()
-        logger.notice("[Ext] RPCClient: heartbeat started (interval=\(interval)s, maxMisses=\(Constants.heartbeatMaxMisses))")
-    }
-
-    private func stopHeartbeat() {
-        lock.lock()
-        let timer = heartbeatTimer
-        heartbeatTimer = nil
-        lock.unlock()
-        timer?.cancel()
-    }
-
-    private func sendHeartbeat() {
-        lock.lock()
-        guard let conn = connection else {
-            lock.unlock()
-            return
-        }
-        let misses = consecutiveMisses + 1
-        consecutiveMisses = misses
+        guard let conn = connection else { lock.unlock(); return }
         let id = nextID
         nextID += 1
-        // Clearing the miss counter on pong is all the callback does; the
-        // timeout decision is the "N consecutive unanswered pings" count above.
-        pending[id] = { [weak self] result in
-            guard result != nil else { return }
-            guard let self else { return }
-            self.lock.lock()
-            self.consecutiveMisses = 0
-            let wasUnconfirmed = !self.heartbeatConfirmed
-            self.heartbeatConfirmed = true
-            self.lock.unlock()
-            if wasUnconfirmed {
-                logger.notice("[Ext] RPCClient: first pong received — switching to normal heartbeat interval")
-                self.startHeartbeat()
-            }
-        }
         lock.unlock()
-
-        if misses >= Constants.heartbeatMaxMisses {
-            // Container is presumed dead: tear down and reconnect. The current
-            // ping is not sent since we're abandoning this connection.
-            logger.error("[Ext] RPCClient: \(misses) heartbeats unanswered — Container presumed dead, reconnecting")
-            resetAndRetry()
-            return
-        }
-
         let meta: [String: String] = [
             "pid": "\(ProcessInfo.processInfo.processIdentifier)",
             "version": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
         ]
-        let req = RPCRequest(id: id, method: "ping", meta: meta)
-        logger.debug("[Ext][RPC CALL] id=\(id) method=ping misses=\(misses)")
+        let req = RPCRequest(id: id, method: "hello", meta: meta)
+        logger.debug("[Ext][RPC CALL] id=\(id) method=hello")
         sendJSON(req, on: conn)
     }
 
     public func disconnect() {
-        stopHeartbeat()
         retryWork?.cancel()
         lock.lock()
         let conn = connection
@@ -730,16 +754,39 @@ public final class RPCClient: @unchecked Sendable {
         lock.unlock()
         for (_, cb) in snapshot { cb(nil) }
 
-        if attempts >= Self.maxFailedRetries {
-            logger.error("[Ext] RPCClient: \(attempts) consecutive connection failures — giving up")
+        // Give up only after we've genuinely exhausted both retries AND given
+        // the Container enough wall-clock time to come up. The old logic
+        // (`attempts >= 3`, retrying every 2s) gave up after ~6s — too early,
+        // because a freshly-launched Container can take several seconds to bind
+        // its RPC port, and each connection-refused during that window bumped
+        // the counter. See giveUpGuard below.
+        if attempts >= Self.maxFailedRetries, giveUpGuard() {
+            logger.error("[Ext] RPCClient: \(attempts) consecutive connection failures over \(Self.maxFailedRetryWindow)s — giving up")
             onShutdown?()
             return
         }
 
-        // Connection failed — most likely the Container isn't running. Ask
-        // LaunchServices to open it so subsequent retries can succeed.
+        // Connection failed — most likely the Container isn't running (yet).
+        // Ask LaunchServices to open it, THEN schedule a retry after enough of
+        // a delay for Con to actually start and bind its port. The two used to
+        // run on independent timers (wake@1s, retry@2s), which raced: the
+        // retry fired before Con was listening and burned through `maxRetries`.
         launchContainerIfNeeded()
-        scheduleRetry()
+        // After a launch, retry on a generous interval so Con has time to come
+        // up; retries that find Con already running use a short interval.
+        scheduleRetry(postLaunch: true)
+    }
+
+    /// Decide whether the Extension should truly give up. We only give up if
+    /// we've hit the retry cap AND enough wall-clock time has elapsed since the
+    /// first failure that the Container has had a fair chance to start. This
+    /// stops slow Con launches from being misclassified as fatal.
+    private func giveUpGuard() -> Bool {
+        lock.lock()
+        let first = firstFailureTime
+        lock.unlock()
+        guard let first else { return true }
+        return Date().timeIntervalSince(first) >= Self.maxFailedRetryWindow
     }
 
     /// Ask LaunchServices to open the Container app in the background. The
@@ -859,11 +906,27 @@ public final class RPCClient: @unchecked Sendable {
         return kill(pid, 0) == 0
     }
 
-    private func scheduleRetry() {
+    /// Schedule the next `connect()` attempt.
+    /// - Parameter postLaunch: when true, use the longer `postLaunchRetryInterval`
+    ///   so a freshly-launched Container has time to start and bind its RPC port
+    ///   before we poke it again. Previously the retry fired on a fixed 2s timer
+    ///   independent of the launch, racing it and burning through `maxRetries`.
+    private func scheduleRetry(postLaunch: Bool = false) {
         retryWork?.cancel()
+        // Anchor the failure streak's start time on the first failure so the
+        // give-up guard can apply its wall-clock grace window.
+        lock.lock()
+        if firstFailureTime == nil { firstFailureTime = Date() }
+        lock.unlock()
+        let interval = postLaunch ? Self.postLaunchRetryInterval : Self.retryInterval
         let work = DispatchWorkItem { [weak self] in self?.connect() }
         retryWork = work
-        DispatchQueue.global().asyncAfter(deadline: .now() + 2, execute: work)
+        DispatchQueue.global().asyncAfter(deadline: .now() + interval, execute: work)
+        if postLaunch {
+            logger.notice("[Ext] RPCClient: retry scheduled in \(interval)s (waiting for Container to come up)")
+        } else {
+            logger.notice("[Ext] RPCClient: retry scheduled in \(interval)s")
+        }
     }
 
     private func receiveLoop() {

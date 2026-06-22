@@ -22,6 +22,14 @@ public struct DebugLogEntry: Identifiable, Sendable {
     public let method: String?
     public let rpcID: Int?
     public let summary: String
+    /// Full payload detail for the event — e.g. the actual file paths in an
+    /// `executeCommand` request, the shell command string, an error description
+    /// in a response, or app/action/template counts in a config push. nil when
+    /// the event has no payload beyond its summary (heartbeats, lifecycle).
+    ///
+    /// Kept separate from `summary` so the list row stays compact while the
+    /// detail is available on expand / hover / export. Multi-line where useful.
+    public let detail: String?
     /// > 1 means this entry collapses `count` consecutive heartbeats.
     public var count: Int
 
@@ -48,6 +56,7 @@ public struct DebugLogEntry: Identifiable, Sendable {
         method: String? = nil,
         rpcID: Int? = nil,
         summary: String,
+        detail: String? = nil,
         count: Int = 1
     ) {
         self.id = id
@@ -58,6 +67,7 @@ public struct DebugLogEntry: Identifiable, Sendable {
         self.method = method
         self.rpcID = rpcID
         self.summary = summary
+        self.detail = detail
         self.count = count
     }
 }
@@ -73,6 +83,9 @@ public struct RPCActivity: Sendable {
     public let method: String?
     public let rpcID: Int?
     public let summary: String
+    /// Full payload detail, or nil if the event carries none. See
+    /// `DebugLogEntry.detail`.
+    public let detail: String?
     /// When true, the Container collapses adjacent heartbeat activities into a
     /// single DebugLogEntry (avoids 1s-interval ping/pong flooding the log).
     public let isHeartbeat: Bool
@@ -83,6 +96,7 @@ public struct RPCActivity: Sendable {
         method: String? = nil,
         rpcID: Int? = nil,
         summary: String,
+        detail: String? = nil,
         isHeartbeat: Bool = false
     ) {
         self.kind = kind
@@ -90,6 +104,7 @@ public struct RPCActivity: Sendable {
         self.method = method
         self.rpcID = rpcID
         self.summary = summary
+        self.detail = detail
         self.isHeartbeat = isHeartbeat
     }
 }

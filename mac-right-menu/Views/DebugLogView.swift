@@ -8,6 +8,10 @@ struct DebugLogView: View {
     @State private var filter: FilterCategory = .all
     /// Keep the window above other apps. Persisted across launches.
     @AppStorage("debugLogAlwaysOnTop") private var alwaysOnTop = false
+    /// Expanded entry ids — a Set so multiple rows can be open at once.
+    @State private var expanded: Set<UUID> = []
+    /// Last export result, surfaced briefly as a toast-ish footer line.
+    @State private var exportResult: ExportResult?
 
     private let timeFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -62,6 +66,19 @@ struct DebugLogView: View {
                 }
                 .pickerStyle(.menu)
                 .labelsHidden()
+                Button {
+                    if let url = appState.exportDebugLog() {
+                        exportResult = ExportResult(.success, url: url)
+                    } else if appState.debugLog.isEmpty {
+                        exportResult = ExportResult(.empty)
+                    } else {
+                        exportResult = ExportResult(.cancelled)
+                    }
+                } label: {
+                    Label("Export", systemImage: "square.and.arrow.up")
+                }
+                .disabled(appState.debugLog.isEmpty)
+                .help(String(localized: "Save the debug log to a file"))
                 Button(role: .destructive) {
                     appState.clearDebugLog()
                 } label: {
@@ -96,10 +113,54 @@ struct DebugLogView: View {
             } else {
                 List {
                     ForEach(visibleEntries) { entry in
-                        DebugLogRow(entry: entry, timeFormatter: timeFormatter)
+                        DebugLogRow(
+                            entry: entry,
+                            timeFormatter: timeFormatter,
+                            isExpanded: expanded.contains(entry.id),
+                            onToggle: {
+                                if expanded.contains(entry.id) {
+                                    expanded.remove(entry.id)
+                                } else {
+                                    expanded.insert(entry.id)
+                                }
+                            }
+                        )
                     }
                 }
                 .listStyle(.inset)
+            }
+
+            // Transient export result banner. Auto-clears after a few seconds
+            // so it doesn't sit on screen forever.
+            if let result = exportResult {
+                Divider()
+                HStack(spacing: 6) {
+                    Image(systemName: result.icon)
+                        .foregroundStyle(result.color)
+                    Text(result.message)
+                        .font(.caption)
+                    Spacer()
+                    Button {
+                        if result.kind == .success, let url = result.url {
+                            NSWorkspace.shared.activateFileViewerSelecting([url])
+                        }
+                    } label: {
+                        if result.kind == .success {
+                            Text("Show")
+                        } else {
+                            Text("Dismiss")
+                        }
+                    }
+                    .buttonStyle(.borderless)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .onAppear {
+                    // Auto-dismiss after 6s; user can also click Dismiss.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 6) {
+                        if exportResult?.id == result.id { exportResult = nil }
+                    }
+                }
             }
         }
         .frame(minWidth: 640, minHeight: 400)
@@ -132,47 +193,135 @@ private enum FilterCategory: String, CaseIterable, Identifiable {
     }
 }
 
+// MARK: - Export result banner
+
+/// Lightweight transient state for the export-result footer. Comparable `id`
+/// so the auto-dismiss timer can tell whether the user has since triggered
+/// another export (in which case the old timer should leave things alone).
+private struct ExportResult: Equatable {
+    let id = UUID()
+    enum Kind { case success, cancelled, empty }
+    let kind: Kind
+    let url: URL?
+
+    init(_ kind: Kind, url: URL? = nil) { self.kind = kind; self.url = url }
+
+    var icon: String {
+        switch kind {
+        case .success:  return "checkmark.circle.fill"
+        case .cancelled: return "xmark.circle"
+        case .empty:    return "exclamationmark.triangle"
+        }
+    }
+    var color: Color {
+        switch kind {
+        case .success:  return .green
+        case .cancelled: return .secondary
+        case .empty:    return .orange
+        }
+    }
+    var message: String {
+        switch kind {
+        case .success:
+            return String(
+                format: String(localized: "Exported to %@"),
+                url?.lastPathComponent ?? ""
+            )
+        case .cancelled:
+            return String(localized: "Export cancelled")
+        case .empty:
+            return String(localized: "Nothing to export — log is empty")
+        }
+    }
+}
+
 // MARK: - Row
 
 private struct DebugLogRow: View {
     let entry: DebugLogEntry
     let timeFormatter: DateFormatter
+    let isExpanded: Bool
+    let onToggle: () -> Void
+
+    /// True when this row has detail worth expanding into. Rows without detail
+    /// (heartbeats, plain lifecycle) render as a flat line and ignore clicks.
+    private var hasDetail: Bool {
+        guard let d = entry.detail, !d.isEmpty else { return false }
+        return true
+    }
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Image(systemName: iconName)
-                .foregroundColor(iconColor)
-                .frame(width: 16)
-            Text(timeFormatter.string(from: entry.timestamp))
-                .font(.system(.body, design: .monospaced))
-                .foregroundStyle(.secondary)
-            Text(badge)
-                .font(.system(.caption, design: .monospaced))
-                .fontWeight(.semibold)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 1)
-                .background(badgeColor.opacity(0.15), in: Capsule())
-                .foregroundColor(badgeColor)
-            if entry.count > 1 {
-                Text(String(localized: "Heartbeat ×\(entry.count)"))
-                    .font(.caption)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                if hasDetail {
+                    // Disclosure chevron. Only the chevron toggles expand — NOT
+                    // the whole row — so a drag-to-select on the summary text
+                    // isn't stolen by a row-level tap gesture.
+                    Button {
+                        onToggle()
+                    } label: {
+                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 10)
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Color.clear.frame(width: 10)
+                }
+                Image(systemName: iconName)
+                    .foregroundColor(iconColor)
+                    .frame(width: 16)
+                Text(timeFormatter.string(from: entry.timestamp))
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                Text(badge)
+                    .font(.system(.caption, design: .monospaced))
+                    .fontWeight(.semibold)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 1)
-                    .background(Color.pink.opacity(0.15), in: Capsule())
-                    .foregroundStyle(.pink)
+                    .background(badgeColor.opacity(0.15), in: Capsule())
+                    .foregroundColor(badgeColor)
+                if entry.count > 1 {
+                    Text(String(localized: "Heartbeat ×\(entry.count)"))
+                        .font(.caption)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 1)
+                        .background(Color.pink.opacity(0.15), in: Capsule())
+                        .foregroundStyle(.pink)
+                }
+                Text(entry.summary)
+                    .font(.system(.caption, design: .monospaced))
+                    .lineLimit(2)
+                    .truncationMode(.tail)
+                Spacer()
+                if let end = entry.endTimestamp {
+                    Text("– \(timeFormatter.string(from: end))")
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+                }
             }
-            Text(entry.summary)
-                .font(.system(.caption, design: .monospaced))
-                .lineLimit(2)
-                .truncationMode(.tail)
-            Spacer()
-            if let end = entry.endTimestamp {
-                Text("– \(timeFormatter.string(from: end))")
-                    .font(.system(.caption2, design: .monospaced))
-                    .foregroundStyle(.tertiary)
+            .padding(.vertical, 3)
+
+            // Expanded detail: the full payload (file paths, command, error…).
+            // Indented under the header so the block reads as belonging to it.
+            // Monospaced + secondary so it's visually distinct from the summary.
+            if isExpanded, let detail = entry.detail, !detail.isEmpty {
+                Text(detail)
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, 34)     // align under the summary text
+                    .padding(.trailing, 8)
+                    .padding(.bottom, 4)
             }
         }
-        .padding(.vertical, 3)
+        // Apply selection at the row-container level: it propagates to every
+        // nested Text (header + detail), so the whole row — timestamps, badges,
+        // summary, and the expanded payload block — is selectable and copyable
+        // (Cmd+C / right-click → Copy). Per Apple docs, applying to a container
+        // affects all child Text views.
+        .textSelection(.enabled)
     }
 
     private var iconName: String {

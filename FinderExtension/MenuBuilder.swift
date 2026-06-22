@@ -38,23 +38,47 @@ enum MenuBuilder {
         /// access guarantee as `symbolCache`.
         nonisolated(unsafe) private static var appIconCache: [String: NSImage] = [:]
 
+        /// Resolve an SF Symbol to an NSImage suitable for `NSMenuItem.image`.
+        ///
+        /// Implementation note: the old version created a blank bitmap NSImage
+        /// and used `lockFocus()` + `draw()` to bake a tinted, fixed-size copy.
+        /// `lockFocus()` forces the image to materialize a bitmap representation,
+        /// which internally calls `representationOfImageRepsInArray:usingType:properties:`
+        /// — that single call dominated the right-click flame graph at ~200ms /
+        /// ~82% of `menu(for:)`. It also had to be re-run on every appearance
+        /// flip (dark/light changes the tint).
+        ///
+        /// The replacement keeps the SF Symbol as a vector / lazily-rendered
+        /// image: we apply a `SymbolConfiguration` carrying both the point size
+        /// (so the image's `size` is 18pt) and the hierarchical color (black on
+        /// Light, white on Dark). NSMenuItem renders the image on the GPU at
+        /// draw time, which is dramatically cheaper than a CPU-side `lockFocus`
+        /// rasterization and needs no pre-baked bitmap. Because the color is
+        /// applied via configuration, an appearance flip still requires dropping
+        /// the cache (see `invalidateSymbolCache`), but there's no expensive
+        /// re-rasterization — just re-resolving the configuration.
         private static func icon(_ name: String) -> NSImage {
             if let cached = symbolCache[name] { return cached }
-            let size = NSSize(width: 18, height: 18)
-            let img = NSImage(size: size)
             guard let symbol = NSImage(systemSymbolName: name, accessibilityDescription: nil) else {
-                symbolCache[name] = img
-                return img
+                // Unknown symbol: return a tiny placeholder so the menu still
+                // lays out correctly. Cached so we don't keep re-querying.
+                let placeholder = NSImage(size: NSSize(width: 18, height: 18))
+                symbolCache[name] = placeholder
+                return placeholder
             }
             let color: NSColor = isDarkMode ? .white : .black
-            let tinted = symbol.withSymbolConfiguration(
-                .init(hierarchicalColor: color)
+            let config = NSImage.SymbolConfiguration(
+                pointSize: 18,
+                weight: .regular
+            ).applying(
+                NSImage.SymbolConfiguration(hierarchicalColor: color)
             )
-            img.lockFocus()
-            (tinted ?? symbol).draw(in: NSRect(origin: .zero, size: size))
-            img.unlockFocus()
-            symbolCache[name] = img
-            return img
+            // `withSymbolConfiguration` returns a lazily-resolved image; the
+            // symbol stays a vector until actually drawn. Cache that resolved
+            // image so repeated menu builds reuse the same instance.
+            let resolved = symbol.withSymbolConfiguration(config) ?? symbol
+            symbolCache[name] = resolved
+            return resolved
         }
 
         /// Resolve an app icon, using the cached bitmap when the path was seen
@@ -72,6 +96,53 @@ enum MenuBuilder {
         /// appearance-independent and kept.
         static func invalidateSymbolCache() {
             symbolCache.removeAll()
+        }
+
+        /// Eagerly populate both icon caches for the given configuration, so the
+        /// first `menu(for:)` after process launch doesn't pay the full
+        /// rasterization cost on Finder's menu-critical path.
+        ///
+        /// Background: the Extension process is NOT persistent — pkd reaps idle
+        /// Finder Sync extension processes, so each right-click can relaunch Ext
+        /// (new PID) with a cold cache. Without warmup, the first right-click's
+        /// `rebuildCachedMenu` synchronously runs `NSWorkspace.icon(forFile:)`
+        /// (reads each app's .icns, decodes TIFF) + SF Symbol `lockFocus` per
+        /// item — exactly the TIFF IO the flame graph flagged.
+        ///
+        /// Warmup is dispatched to the main thread because
+        /// `NSWorkspace.shared.icon(forFile:)` and `NSImage.lockFocus` are
+        /// main-thread APIs; calling them from the RPC background thread (as
+        /// rebuildCachedMenu used to) was a latent correctness bug. It's also
+        /// idempotent — both `icon(_:)` and `appIcon(forPath:)` early-return on
+        /// a cache hit, so repeated calls (config change, appearance flip) are
+        /// cheap no-ops once the cache is warm.
+        ///
+        /// - Note: this returns immediately; the actual work happens async on
+        ///   the main queue, overlapping with the 1-3s RPC connect/config-fetch
+        ///   window so it costs the user no perceived latency.
+        static func warmupCaches(for configuration: MenuConfiguration) {
+            DispatchQueue.main.async {
+                // App icons: every enabled app in the config. Keyed by path in
+                // appIconCache, so this is what buildMenu will look up later.
+                for app in configuration.appItems where app.isEnabled {
+                    _ = appIcon(forPath: app.appURL.path)
+                }
+                // SF Symbols: the fixed set the menu can render — action icons
+                // (from ActionType.systemIconName), the New File submenu header,
+                // the Open With submenu header, and the fallback gear.
+                var symbols = Set<String>([
+                    "doc.badge.plus",            // New File header + section
+                    "menubar.dock.rectangle",    // Open With header
+                    "gearshape"                  // fallback for action w/o icon
+                ])
+                for actionType in ActionType.allCases {
+                    symbols.insert(actionType.systemIconName)
+                }
+                for name in symbols {
+                    _ = icon(name)
+                }
+                logger.notice("[Ext] MenuBuilder: icon caches warmed (\(configuration.appItems.count) apps, \(symbols.count) symbols)")
+            }
         }
 
     static func buildMenu(
@@ -130,7 +201,9 @@ enum MenuBuilder {
                 )
                 item.target = target
                 item.tag = Constants.TagBase.appItem.rawValue
-                item.image = appIcon(forPath: app.appURL.path)
+                if configuration.showAppIcons {
+                    item.image = appIcon(forPath: app.appURL.path)
+                }
                 item.isEnabled = hasSelection
                 item.representedObject = app
                 menu.addItem(item)
@@ -142,7 +215,9 @@ enum MenuBuilder {
                     let appItem = NSMenuItem(title: app.displayName, action: handlerSelector, keyEquivalent: "")
                     appItem.target = target
                     appItem.tag = Constants.TagBase.appItem.rawValue + index
-                    appItem.image = appIcon(forPath: app.appURL.path)
+                    if configuration.showAppIcons {
+                        appItem.image = appIcon(forPath: app.appURL.path)
+                    }
                     appItem.representedObject = app
                     appItem.isEnabled = hasSelection
                     submenu.addItem(appItem)

@@ -25,6 +25,22 @@ struct AppsSettingsTab: View {
                     .foregroundStyle(.secondary)
                     .padding(.leading, 2)
             }
+            
+            // MARK: Show App Icons toggle
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text(String(localized: "Show App Icons"))
+                    Spacer()
+                    Toggle("", isOn: $appState.showAppIcons)
+                        .toggleStyle(.switch)
+                        .controlSize(.mini)
+                }
+                Text(String(localized: "Display the application icon next to each app in the right-click menu."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, 2)
+            }
+            .padding(.bottom, 12)
 
             Divider()
 
@@ -38,6 +54,7 @@ struct AppsSettingsTab: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 12)
+
 
             // MARK: - List (fills remaining height)
             if appState.appItems.isEmpty {

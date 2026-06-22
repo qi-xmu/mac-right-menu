@@ -50,6 +50,7 @@
 		DBB1C2D3E4F5061728394A6B /* DebugLogEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB9A1C2D3E4F5061728394A5 /* DebugLogEntry.swift */; };
 		DBB1C2D3E4F5061728394A7C /* DebugLogEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB9A1C2D3E4F5061728394A5 /* DebugLogEntry.swift */; };
 		DBB1C2D3E4F5061728394A9E /* DebugLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB9A1C2D3E4F5061728394A8D /* DebugLogView.swift */; };
+		FDA1B2C3D4E5F60718293A4C /* FullDiskAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDA1B2C3D4E5F60718293A4B /* FullDiskAccess.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -112,6 +113,7 @@
 		DD39CB04B25FC831003DBF3A /* FinderSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderSync.swift; sourceTree = "<group>"; };
 		FDA173AFFD620244655EA215 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		FF59226764AF1CFFDC561239 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
+		FDA1B2C3D4E5F60718293A4B /* FullDiskAccess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FullDiskAccess.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -170,6 +172,14 @@
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
+		FDA1B2C3D4E5F60718293A4D /* Permissions */ = {
+			isa = PBXGroup;
+			children = (
+				FDA1B2C3D4E5F60718293A4B /* FullDiskAccess.swift */,
+			);
+			path = Permissions;
+			sourceTree = "<group>";
+		};
 		3891F364B0653E2749B28F92 /* Preferences */ = {
 			isa = PBXGroup;
 			children = (
@@ -186,6 +196,7 @@
 				FF59226764AF1CFFDC561239 /* Localizable.xcstrings */,
 				E071B965571E2ABBDB3F82C0 /* Models */,
 				3891F364B0653E2749B28F92 /* Preferences */,
+			FDA1B2C3D4E5F60718293A4D /* Permissions */,
 				B3FE1FE37D5A11521C160E3D /* RPC */,
 			);
 			path = Shared;
@@ -384,6 +395,7 @@
 				0B5469E7DCE4B1A94C499A4B /* RPCSession.swift in Sources */,
 				ADAFC6CA85BEB78250DC40F3 /* SettingsView.swift in Sources */,
 				5D47F2440E7DD71644A9E934 /* SharedUserDefaults.swift in Sources */,
+				FDA1B2C3D4E5F60718293A4C /* FullDiskAccess.swift in Sources */,
 				3588A946E437161A77DB85CB /* mac_right_menuApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

@@ -32,10 +32,11 @@ Extension 和 Container App 之间采用 **JSON-RPC 2.0 over TCP loopback** 通�
 │  │ RPCClient           │      │ FinderSync               │ │
 │  │ NWConnection        │      │ + menu(for:)             │ │
 │  │ → 127.0.0.1:57421   │      │ + handleMenuAction()     │ │
-│  │                     │─────►│                          │ │
-│  │ executeCommand()    │      │ cachedConfig (内存)       │ │
-│  │ 自动重连（2s）       │      └──────────────────────────┘ │
-│  └─────────────────────┘                                    │
+│  │                     │─────►│ + rebuildCachedMenu()    │ │
+│  │ executeCommand()    │      │                          │ │
+│  │ 自动重连（2s）       │      │ cachedConfig (内存)       │ │
+│  └─────────────────────┘      │ cachedMenu (NSMenu 缓存) │ │
+│                               └──────────────────────────┘ │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -308,6 +309,7 @@ RPCClient 的 `handleResponse` 先尝试按 notification 形态解码（有 `met
 | Ext 心跳超时重连 | `[Ext] RPCClient: N heartbeats unanswered — ... reconnecting` | error | `RPCClient.sendHeartbeat` |
 | Ext 拉起 Con | `[Ext] RPCClient: Container not reachable — requesting launch` / `Container launch requested` | notice | `RPCClient.launchContainerIfNeeded` |
 | Ext 配置写入缓存 | `[Ext] Config applied:` | notice | `FinderSync`（onConfigChange 回调） |
+| Ext 缓存菜单重建 | `[Ext] Cached menu rebuilt (N top-level items)` | notice | `FinderSync.rebuildCachedMenu` |
 | Con 收到指令并派发执行 | `[Con][RPC RECV→DISPATCH]` | notice | `AppState.executeCommand`（commandLogOnly 短路路径） |
 | Con 检测到 Ext 注册 | `[Con] Extension registered via pluginkit (system-level; not yet RPC-connected)` | notice | `AppState.checkExtensionRegistration` |
 

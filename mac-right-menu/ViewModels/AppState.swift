@@ -103,10 +103,14 @@ class AppState: ObservableObject {
 
     init() {
         // Fast path: check via NSRunningApplication.
+        // Filter out (a) ourselves (runningApplications includes the caller)
+        // and (b) any instance already in `.terminating` — a terminating app
+        // lingers in the list and would otherwise make a freshly-launched
+        // replacement (e.g. Restart) see count > 1 and exit immediately.
         let existing = NSRunningApplication.runningApplications(
             withBundleIdentifier: Constants.mainAppBundleID
-        )
-        if existing.count > 1 {
+        ).filter { $0 != NSRunningApplication.current && !$0.isTerminated }
+        if existing.count > 0 {
             logger.warning("[Con] Another Container already running — exiting")
             self.lockFileDescriptor = -1
             exit(0)
@@ -132,6 +136,10 @@ class AppState: ObservableObject {
         // `.notInstalled`, so `isRegistered` is false and the launch filter
         // would drop everything.
         checkExtensionRegistration()
+        // Probe Full Disk Access so the General settings tab shows a real
+        // status on first open instead of "not checked". Runs off the main
+        // thread; result lands in `fullDiskAccessGranted`.
+        checkFullDiskAccess()
     }
 
     // MARK: - Extension Management
@@ -227,6 +235,40 @@ class AppState: ObservableObject {
         }
     }
 
+    // MARK: - Full Disk Access
+
+    /// Cached Full Disk Access status for the running Container.
+    /// - `nil`:  not probed yet (or probing)
+    /// - `true`: FDA granted — file ops reach any location
+    /// - `false`: FDA missing — TCC-protected paths will fail
+    ///
+    /// Intentionally NOT persisted: FDA is a system-level permission the user
+    /// can revoke at any time in System Settings, so re-probing per launch
+    /// (and on manual refresh) is more reliable than trusting a stale value.
+    @Published var fullDiskAccessGranted: Bool?
+
+    /// Probe FDA on a background queue and cache the result on the main actor.
+    /// Called once at init and again whenever the user taps Refresh in the
+    /// General settings tab (e.g. after granting access in System Settings).
+    func checkFullDiskAccess() {
+        DispatchQueue.global(qos: .utility).async {
+            let granted = FullDiskAccess.isGranted()
+            DispatchQueue.main.async {
+                self.fullDiskAccessGranted = granted
+            }
+        }
+    }
+
+    /// Deep-link to System Settings → Privacy & Security → Full Disk Access.
+    /// macOS offers no programmatic grant (unlike Photos/Contacts), so the
+    /// user must add the app and toggle it manually; this just lands them on
+    /// the right pane.
+    func openSystemSettingsForFullDiskAccess() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
     /// Probe `pluginkit -m -p com.apple.FinderSync` and decode the leading
     /// election-state flag of our extension's line into a `RegistrationStatus`.
     /// On any failure (pluginkit missing, parse error, exit non-zero) we
@@ -312,6 +354,84 @@ class AppState: ObservableObject {
         debugLog.removeAll()
     }
 
+    /// Export the current debug log to a plain-text file the user picks via
+    /// NSSavePanel. Returns the written URL on success, nil on cancel/error.
+    ///
+    /// Format: one entry per block, timestamp + badge + summary + (optional)
+    /// indented detail. Plain text (not JSON) so it's trivially greppable and
+    /// pasteable into a bug report / chat. Newest-first ordering matches the
+    /// Debug Log window so the exported file reads top-to-bottom chronologically
+    /// in the same direction the user is used to scanning.
+    @discardableResult
+    func exportDebugLog() -> URL? {
+        guard !debugLog.isEmpty else { return nil }
+
+        let panel = NSSavePanel()
+        panel.title = String(localized: "Export Debug Log")
+        let stamp = Self.exportDateFormatter.string(from: Date())
+        panel.nameFieldStringValue = "mac-right-menu-debug-\(stamp).log"
+        panel.allowedContentTypes = [.plainText]
+        guard panel.runModal() == .OK, let url = panel.url else { return nil }
+
+        let text = renderDebugLogText()
+        do {
+            try text.data(using: .utf8)?.write(to: url, options: .atomic)
+            return url
+        } catch {
+            logger.error("[Con] exportDebugLog write failed: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+    }
+
+    private static let exportDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyyMMdd-HHmmss"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+
+    /// Render the in-memory log as export-ready plain text. Newest entry first
+    /// (matches the window). Each entry is a header line + optional indented
+    /// detail block + blank separator.
+    private func renderDebugLogText() -> String {
+        let tsFmt = DateFormatter()
+        tsFmt.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        tsFmt.locale = Locale(identifier: "en_US_POSIX")
+
+        var lines: [String] = []
+        lines.append("# mac-right-menu Debug Log")
+        lines.append("# Exported: \(tsFmt.string(from: Date()))")
+        lines.append("# Entries: \(debugLog.count)")
+        lines.append("")
+
+        for entry in debugLog.reversed() {
+            var header = "[\(tsFmt.string(from: entry.timestamp))]"
+            if let end = entry.endTimestamp {
+                header += " – [\(tsFmt.string(from: end))]"
+            }
+            let dir = entry.direction.map { $0 == .send ? "↑" : "↓" } ?? "·"
+            let method = entry.method ?? "—"
+            var badge: String
+            switch entry.category {
+            case .rpc:        badge = "rpc \(dir) \(method)"
+            case .wake:       badge = "wake \(method)"
+            case .connection: badge = "conn \(method)"
+            case .lifecycle:  badge = "life \(method)"
+            }
+            if let id = entry.rpcID { badge += " #\(id)" }
+            if entry.count > 1 { badge += " ×\(entry.count)" }
+            lines.append("\(header) \(badge)")
+            lines.append("  \(entry.summary)")
+            if let detail = entry.detail, !detail.isEmpty {
+                // Indent each detail line so the block stands out under its
+                // header even in a plain-text viewer.
+                detail.split(separator: "\n").forEach { lines.append("    \($0)") }
+            }
+            lines.append("")
+        }
+        return lines.joined(separator: "\n")
+    }
+
     /// Append a pre-built entry on the main actor, trimming to the cap.
     /// Used for wake/lifecycle events generated directly on the main actor.
     /// No-op when the Debug Log is disabled (the toggle in General settings);
@@ -346,7 +466,8 @@ class AppState: ObservableObject {
             direction: activity.direction,
             method: activity.method,
             rpcID: activity.rpcID,
-            summary: activity.summary
+            summary: activity.summary,
+            detail: activity.detail
         )
         appendDebugEntry(entry)
     }
@@ -445,6 +566,16 @@ class AppState: ObservableObject {
                 configuration.actionItems[index].isEnabled = newValue
                 saveConfiguration()
             }
+        }
+    }
+
+    /// Controls whether app icons appear in the Finder contextual menu.
+    /// When false, only text labels are shown for "Open With" / "Open in X".
+    var showAppIcons: Bool {
+        get { configuration.showAppIcons }
+        set {
+            configuration.showAppIcons = newValue
+            saveConfiguration()
         }
     }
 

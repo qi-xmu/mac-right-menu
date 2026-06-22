@@ -75,6 +75,13 @@ echo "✅ Installed: $INSTALL_APP"
 EXTENSION_APPEX="$INSTALL_APP/Contents/PlugIns/FinderExtension.appex"
 if [ -d "$EXTENSION_APPEX" ]; then
     echo "==> Installing Finder extension..."
+    # Kill any already-loaded FinderExtension process BEFORE re-registering.
+    # pkd caches a loaded extension's process image in memory; once an ext has
+    # been instantiated it gets reused on the next right-click and the on-disk
+    # .appex is NOT re-read. So a fresh build silently runs as the OLD binary
+    # until the host process is torn down. Killing it here forces pkd to reload
+    # the new binary on the next invocation.
+    killall "FinderExtension" 2>/dev/null || true
     # 先移除旧注册
     pluginkit -e ignore -i "$EXTENSION_BUNDLE_ID" 2>/dev/null || true
     # 注册新扩展
