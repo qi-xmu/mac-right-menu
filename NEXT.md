@@ -1,7 +1,7 @@
 # NEXT.md
 
 > 待办与设计差异，按优先级排列。
-> 更新: 2026-06-17（Debug Log 功能已编码但未集成到 Xcode 项目；RPCActivity 编译错误待修复）
+> 更新: 2026-06-22（Debug Log 已集成；RPCActivity 编译警告已修复）
 
 ---
 
@@ -58,7 +58,7 @@
 1. `NewFileSettingsTab` 列表行/编辑入口：新增「选择模板文件…」按钮（`NSOpenPanel`），按模板后缀过滤（仅允许选该后缀文件），读取内容写入 `template.defaultContent`。
 2. 预览：列表行点击展开 / 二级 sheet 展示当前模板内容（只读多行文本预览）。
 3. （可选）内置模板恢复常用骨架：md→`# \n`、json→`{\n  \n}\n`，并提供「恢复内置内容」按钮。
-4. 持久化：`defaultContent` 已随 `MenuConfiguration` 存入 App Group `UserDefaults`，无需额外迁移；注意大文件会让配置体积膨胀，需评估上限（建议限制 < 1MB，超限提示）。
+4. 持久化：`defaultContent` 已随 `MenuConfiguration` 存入各进程独立 `UserDefaults.standard`，通过 RPC 同步；注意大文件会让配置体积膨胀，需评估上限（建议限制 < 1MB，超限提示）。
 
 **涉及文件**：`mac-right-menu/Views/NewFileSettingsTab.swift`（`NSOpenPanel` + 预览）、`Shared/Models/NewFileTemplate.swift`（无需改字段）。
 

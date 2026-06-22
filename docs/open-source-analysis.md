@@ -315,19 +315,25 @@ FIFinderSyncController.default().directoryURLs = [URL(fileURLWithPath: "/Users/"
 
 ## 对 mac-right-menu 的参考意义
 
-### 推荐方案
+> **注意**: 以下为研究阶段的初步建议。项目最终采用的架构方案与部分建议不同，
+> 详见 `DENY.md`（已拒绝方案）和 `docs/design/communication-protocol.md`（最终方案）。
 
-1. **菜单位置**: 使用 `directoryURLs = [URL(fileURLWithPath: "/")]`（全局生效）或通过设置动态控制
-2. **菜单构建**: 使用 `NSMenuItem` + target/action，不用 `FIMenuItem`
-3. **IPC**: 使用 `DistributedNotificationCenter` 实现 Extension → Container 通信
-4. **架构**: 参考 MenuHelper 的 Shared/ 共享代码模式，用协议抽象
-5. **持久化**: 参考 RClick 使用 SwiftData + App Group
-6. **安全域**: 如果需要 MAC App Store 发布，使用沙箱 + `com.apple.security.files.bookmarks.app-scope`
-7. **目录访问策略**: 参考 RClick 的 App-Scope Bookmark 模式（用户选择设置中的目录后持久化）
+### 实际采用的方案
 
-### 不推荐方案
+1. **菜单位置**: `directoryURLs = [URL(fileURLWithPath: "/")]`（全局生效）
+2. **菜单构建**: `NSMenuItem` + target/action，不用 `FIMenuItem`（参考 MenuHelper 模式）
+3. **IPC**: JSON-RPC 2.0 over TCP loopback（`127.0.0.1:57421`），Container 运行 `RPCServer`（NWListener），Extension 使用 `RPCClient`（NWConnection）
+4. **架构**: `Shared/` 共享代码（Constants、Models、RPC），Container 和 Extension 各编译一份
+5. **持久化**: 各进程独立 `UserDefaults.standard`，通过 RPC 同步配置（App Group 因 TCC 风险被拒绝，见 `DENY.md`）
+6. **安全域**: Extension 使用 `com.apple.security.network.client` 建立 TCP 连接，Container 无沙盒
+7. **目录访问策略**: 全磁盘访问（FDA）权限 + Shell 命令转发到 Container 执行
+
+### 不推荐方案（已验证）
 
 1. ❌ 直接使用 `FIMenuItem`（功能受限）
 2. ❌ Extension 内直接弹 NSAlert/NSOpenPanel（Sandbox 限制 + 体验差）
 3. ❌ 使用 `keyEquivalent`（Finder 忽略）
 4. ❌ Extension 内直接写文件系统（除非绝对必要，应在 Container 侧操作）
+5. ❌ `DistributedNotificationCenter` 做 IPC（无法携带结构化数据，无请求/响应模型）
+6. ❌ App Group `UserDefaults` 共享（FinderSync Extension 受 TCC 限制，读写需 FDA）
+7. ❌ SwiftData / Core Data 跨进程共享（复杂度高，沙盒限制多）

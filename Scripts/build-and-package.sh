@@ -23,9 +23,7 @@ xcodebuild archive \
     -scheme "$SCHEME" \
     -configuration "$CONFIGURATION" \
     -derivedDataPath "$DERIVED_DATA" \
-    -archivePath "$ARCHIVE_PATH" \
-    CODE_SIGN_STYLE="Manual" \
-    CODE_SIGN_IDENTITY="Developer ID Application"
+    -archivePath "$ARCHIVE_PATH"
 
 echo "==> Exporting..."
 xcodebuild -exportArchive \

@@ -7,9 +7,9 @@
     <key>method</key>
     <string>developer-id</string>
     <key>signingStyle</key>
-    <string>manual</string>
+    <string>automatic</string>
     <key>teamID</key>
-    <string>YOUR_TEAM_ID</string>
+    <string>9H9AXS5ZLL</string>
     <key>stripSwiftSymbols</key>
     <true/>
     <key>uploadBitcode</key>

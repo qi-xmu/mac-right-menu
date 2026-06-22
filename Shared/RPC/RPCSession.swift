@@ -421,13 +421,32 @@ public final class RPCServer: @unchecked Sendable {
             // connection status UI and cancel any pending delayed Ext wake.
             // Replaces the old Ext→Con ping heartbeat: heartbeat direction is
             // now Con→Ext only.
-            let meta = req.meta
+            //
+            // PID verification: confirm the reported PID actually belongs to a
+            // running process with our Extension's bundle ID. This prevents a
+            // malicious local process from connecting and sending forged commands.
+            let meta = req.meta ?? [:]
+            if let pidStr = meta["pid"], let pid = Int32(pidStr) {
+                let extApps = NSRunningApplication.runningApplications(
+                    withBundleIdentifier: Constants.extensionBundleID
+                )
+                let isKnownExtension = extApps.contains {
+                    $0.processIdentifier == pid && !$0.isTerminated
+                }
+                guard isKnownExtension else {
+                    logger.warning("[Con] RPCServer: rejected hello — PID \(pid) is not a registered Extension (bundleID=\(Constants.extensionBundleID))")
+                    onActivity(RPCActivity(kind: .rpc, direction: .recv, method: "hello", rpcID: req.id,
+                                           summary: "hello rejected — PID \(pid) not a registered Extension"))
+                    connection.cancel()
+                    return
+                }
+            }
             Task { @MainActor in onHeartbeat(meta) }
             recordPong(connection)
             let resp = RPCResponse(jsonrpc: "2.0", id: req.id,
                                    result: RPCResult(CommandResult(success: true)), error: nil)
             sendJSON(resp, on: connection)
-            onActivity(RPCActivity(kind: .rpc, direction: .send, method: "response", rpcID: req.id, summary: "hello ack", detail: meta.flatMap { "  pid=\($0["pid"] ?? "?") version=\($0["version"] ?? "?")"}))
+            onActivity(RPCActivity(kind: .rpc, direction: .send, method: "response", rpcID: req.id, summary: "hello ack", detail: "  pid=\(meta["pid"] ?? "?") version=\(meta["version"] ?? "?")"))
         case "getConfig":
             // Hand the full current config back to the Extension. Runs on the
             // main actor since AppState.configuration lives there.
