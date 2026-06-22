@@ -146,12 +146,11 @@ class AppState: ObservableObject {
 
     private func loadExtensions() {
         extensions = Constants.knownExtensions.map { ext in
-            var info = ExtensionInfo(
+            ExtensionInfo(
                 bundleID: ext.bundleID,
                 displayName: ext.displayName,
                 autoLaunch: SharedUserDefaults.extensionAutoLaunch(bundleID: ext.bundleID)
             )
-            return info
         }
     }
 
@@ -277,7 +276,7 @@ class AppState: ObservableObject {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .utility).async {
                 let task = Process()
-                task.launchPath = "/usr/bin/pluginkit"
+                task.executableURL = URL(fileURLWithPath: "/usr/bin/pluginkit")
                 task.arguments = ["-m", "-p", "com.apple.FinderSync"]
                 let pipe = Pipe()
                 task.standardOutput = pipe
@@ -338,9 +337,13 @@ class AppState: ObservableObject {
         removeLockFile()
         rpcServer.broadcastShutdown()
         // Brief delay so connected Extensions can receive the shutdown
-        // notification before the listener is torn down.
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.3) { [weak self] in
-            self?.rpcServer.stop()
+        // notification before the listener is torn down. Capture rpcServer
+        // locally to avoid referencing a MainActor-isolated property from
+        // the @Sendable closure that Task.sleep creates.
+        let server = rpcServer
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(300))
+            server.stop()
         }
     }
 
@@ -783,7 +786,7 @@ class AppState: ObservableObject {
                 break
             }
             let task = Process()
-            task.launchPath = "/bin/bash"
+            task.executableURL = URL(fileURLWithPath: "/bin/bash")
             let substituted = cmd.replacingOccurrences(of: "{}", with: command.files.joined(separator: " "))
             shellCommand = substituted
             let errPipe = Pipe()

@@ -245,7 +245,7 @@ struct GeneralSettingsTab: View {
         let pid = ProcessInfo.processInfo.processIdentifier
         let script = "while kill -0 \(pid) 2>/dev/null; do sleep 0.1; done; open \"\(appPath)\""
         let task = Process()
-        task.launchPath = "/bin/sh"
+        task.executableURL = URL(fileURLWithPath: "/bin/sh")
         task.arguments = ["-c", script]
         // Detach into its own session so it survives our termination.
         do {

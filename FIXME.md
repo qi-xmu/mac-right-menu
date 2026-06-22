@@ -1,7 +1,7 @@
 # FIXME.md
 
 项目代码审查发现的问题清单，按优先级排列。
-更新: 2026-06-17（对照当前实现校准：移除已修复/已废弃项，更新行号和描述）
+更新: 2026-06-22（移除已修复项 #6/#7/#10/#11/#14/#15）
 
 ---
 
@@ -76,84 +76,51 @@ task.arguments = ["-c", substituted]
 
 ---
 
-### 6. `@unchecked Sendable` 重复声明（已修复）
-
-- **文件**: `Shared/Models/AppMenuItem.swift:4` vs `Shared/Preferences/MenuConfiguration.swift:44-65`
-- **状态**: ✅ 已修复 — `MenuConfiguration.swift:64` 已改为注释说明 Sendable 在各模型定义处声明。
-
----
-
-### 7. SettingsView 与子视图 frame 矛盾（已修复）
-
-- **文件**: `mac-right-menu/Views/SettingsView.swift:30` vs `mac-right-menu/Views/ActionsSettingsTab.swift:57`
-- **状态**: ✅ 已修复 — 外层 `frame(minWidth: 560, minHeight: 420)` 与子视图 `minWidth: 560` 一致。
-
----
-
 ## 🟢 P3 — 低优先级（改善代码质量）
 
-### 8. 模板扩展名无输入校验
+### 6. 模板扩展名无输入校验
 
 - **文件**: `mac-right-menu/Views/NewFileSettingsTab.swift:128`
 - **问题**: 扩展名输入接受空格、斜杠等特殊字符，可能生成无效文件名。
 - **建议**: 校验扩展名不含路径分隔符和空白字符。
 
-### 9. Cancel 按钮不重置表单状态
+### 7. Cancel 按钮不重置表单状态
 
 - **文件**: `mac-right-menu/Views/NewFileSettingsTab.swift:134`
 - **问题**: 取消新建模板后再次打开 Sheet，残留上次的输入内容。
 - **建议**: Cancel 操作中也添加 `newFileName = ""; newExtension = "txt"`。
 
-### 10. `icon(_:)` 每次右键都重新创建 NSImage
-
-- **文件**: `FinderExtension/MenuBuilder.swift:13-27`
-- **问题**: 每次调用 `icon(_:)` 都执行 `lockFocus()` / `unlockFocus()` / `draw(in:)`。
-- **建议**: 缓存图标到静态字典，在外观变化时失效。
-
-### 11. `isProductionMode` 每次动作都查询 `runningApplications`
-
-- **文件**: `FinderExtension/FinderSync.swift`（当前代码中无此属性，已移除）
-- **状态**: ✅ 已修复 — 当前代码无 `isProductionMode` 属性。
-
-### 12. MenuBuilder 缩进不一致
+### 8. MenuBuilder 缩进不一致
 
 - **文件**: `FinderExtension/MenuBuilder.swift:9-11`
 - **问题**: `isDarkMode` 和 `icon(_:)` 方法多出 4 空格缩进。
 - **建议**: 统一为 4 空格缩进。
 
-### 13. 通知名未统一到 Constants
+### 9. 通知名未统一到 Constants
 
 - **文件**: `mac-right-menu/mac_right_menuApp.swift:37-38`
 - **问题**: `"openSettingsWindow"` 使用 `Notification.Name` 扩展定义，而跨进程通知都通过 `Constants.Notifications.*`。
 - **建议**: 添加到 `Constants.Notifications`（或作为进程内通知说明两者风格不同的原因）。
 
-### 14. `menu(for:)` 仅处理 `contextualMenuForItems`
-
-- **文件**: `FinderExtension/FinderSync.swift:61`
-- **问题**: `guard menuKind == .contextualMenuForItems else { return NSMenu() }` 忽略了 toolbar/sidebar/gear menu。
-- **建议**: 添加注释说明这是有意为之的设计决定。
-
-### 15. Process.launchPath 使用已废弃 API
-
-- **文件**: `mac-right-menu/ViewModels/AppState.swift:194, 522`
-- **问题**: `task.launchPath = ...` 已废弃，应改用 `task.executableURL = URL(fileURLWithPath:)`。
-- **建议**: 替换为 `executableURL` + `run()`。
-
 ---
 
-## ✅ 已修复的问题（相对旧版 FIXME.md）
+## ✅ 已修复的问题
 
 | # | 问题 | 状态 | 说明 |
 |---|------|------|------|
-| 4 | IPC 竞态条件：pendingCommand 可被覆盖 | ✅ 已修复 | IPC 已重写为 JSON-RPC over TCP，不存在 pendingCommand |
-| 5 | Tag 范围缺少上界检查 | ✅ 大幅改善 | TagBase 已重排为 0/1000/2000/2002/4000，新增范围检查 |
-| 6 | PreferenceStore 持锁做文件 I/O | ✅ 已修复 | SharedUserDefaults 已改用 UserDefaults.standard，无自定义锁 |
-| 9 | Heartbeat 使用系统时钟 | ✅ 已修复 | IPC 已重写，心跳机制全新实现 |
-| 10 | Timer 未在 deinit 中 invalidate | ✅ 已修复 | 改用 DispatchSourceTimer + stopHeartbeat() |
-| 16 | `@unchecked Sendable` 重复声明 | ✅ 已修复 | 注释说明 Sendable 在各模型定义处声明 |
-| 17 | SettingsView frame 矛盾 | ✅ 已修复 | 外层与子视图 frame 对齐 |
-| 19 | `restartFinder()` 使用已废弃 API | ✅ 已修复 | 方法已移除 |
-| 20 | SettingsSync 未返回观察者 token | ✅ 已修复 | IPC 架构已重构，SettingsSync 不再存在 |
+| — | IPC 竞态条件：pendingCommand 可被覆盖 | ✅ 已修复 | IPC 已重写为 JSON-RPC over TCP，不存在 pendingCommand |
+| — | Tag 范围缺少上界检查 | ✅ 大幅改善 | TagBase 已重排为 0/1000/2000/2002/4000，新增范围检查 |
+| — | PreferenceStore 持锁做文件 I/O | ✅ 已修复 | SharedUserDefaults 已改用 UserDefaults.standard，无自定义锁 |
+| — | Heartbeat 使用系统时钟 | ✅ 已修复 | IPC 已重写，心跳机制全新实现 |
+| — | Timer 未在 deinit 中 invalidate | ✅ 已修复 | 改用 DispatchSourceTimer + stopHeartbeat() |
+| — | `@unchecked Sendable` 重复声明 | ✅ 已修复 | 注释说明 Sendable 在各模型定义处声明 |
+| — | SettingsView frame 矛盾 | ✅ 已修复 | 外层与子视图 frame 对齐 |
+| — | `restartFinder()` 使用已废弃 API | ✅ 已修复 | 方法已移除 |
+| — | SettingsSync 未返回观察者 token | ✅ 已修复 | IPC 架构已重构，SettingsSync 不再存在 |
+| — | `icon(_:)` 每次右键都重新创建 NSImage | ✅ 已修复 | 已实现 `symbolCache` + `appIconCache` 静态缓存 |
+| — | `isProductionMode` 每次查询 runningApplications | ✅ 已修复 | 属性已移除 |
+| — | `menu(for:)` 仅处理 `contextualMenuForItems` | ✅ 已修复 | 已支持 `.contextualMenuForItems` + `.contextualMenuForContainer` |
+| — | `Process.launchPath` 使用已废弃 API | ✅ 已修复 | 3 处全部替换为 `executableURL = URL(fileURLWithPath:)` |
 
 ---
 

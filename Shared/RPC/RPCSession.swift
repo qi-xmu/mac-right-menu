@@ -144,8 +144,13 @@ struct RPCShutdownNotification: Codable {
 /// Reads complete newline-terminated JSON lines from an NWConnection.
 /// Calls `handler` for each decoded line, then `onComplete` when the stream ends.
 private func readLines(from connection: NWConnection,
-                        handler: @escaping (Data) -> Void,
-                        onComplete: @escaping () -> Void) {
+                        handler: @escaping @Sendable (Data) -> Void,
+                        onComplete: @escaping @Sendable () -> Void) {
+    // Copy into local @Sendable constants so Swift 6 strict concurrency
+    // doesn't complain about capturing a non-Sendable closure value when
+    // readLines calls itself recursively (line below's onComplete).
+    let onComp = onComplete
+    let onHandler = handler
     connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { data, _, isComplete, error in
         if let data, !data.isEmpty {
             // Buffer handling: split on \n. Simple approach — assume messages fit in chunks.
@@ -153,24 +158,24 @@ private func readLines(from connection: NWConnection,
             var start = data.startIndex
             while let nl = data[start...].firstIndex(of: 0x0A) {
                 let line = data[start..<nl]
-                if !line.isEmpty { handler(Data(line)) }
+                if !line.isEmpty { onHandler(Data(line)) }
                 start = data.index(after: nl)
             }
             // Trailing partial line without newline (shouldn't happen for well-formed peers).
             if start < data.endIndex {
-                handler(Data(data[start..<data.endIndex]))
+                onHandler(Data(data[start..<data.endIndex]))
             }
         }
         if let err = error {
             logger.error("RPCSession: receive error: \(err.localizedDescription, privacy: .public)")
-            onComplete()
+            onComp()
             return
         }
         if isComplete {
-            onComplete()
+            onComp()
             return
         }
-        readLines(from: connection, handler: handler, onComplete: onComplete)
+        readLines(from: connection, handler: onHandler, onComplete: onComp)
     }
 }
 
