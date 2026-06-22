@@ -9,7 +9,7 @@ struct GeneralSettingsTab: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: 12) {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Text("Enable Finder Context Menu")
@@ -24,7 +24,7 @@ struct GeneralSettingsTab: View {
                         .padding(.leading, 2)
                 }
 
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Text("Enable Command Execution")
                         Spacer()
@@ -40,7 +40,21 @@ struct GeneralSettingsTab: View {
                         .padding(.leading, 2)
                 }
 
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text(String(localized: "Show Menu Icons"))
+                        Spacer()
+                        Toggle("", isOn: $appState.showMenuIcons)
+                            .toggleStyle(.switch)
+                            .controlSize(.mini)
+                    }
+                    Text(String(localized: "Display SF Symbol icons next to action items (Copy Path, Copy File Name, etc.) in the right-click menu. Submenu headers are unaffected."))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.leading, 2)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Text("Execution Log")
                         Spacer()
@@ -56,7 +70,7 @@ struct GeneralSettingsTab: View {
                         .padding(.leading, 2)
                 }
 
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Text("Debug Log")
                         Spacer()
@@ -79,7 +93,7 @@ struct GeneralSettingsTab: View {
 
                 Divider()
 
-                HStack(spacing: 12) {
+                HStack(spacing: 8) {
                     Spacer()
                     Button {
                         restartApp()

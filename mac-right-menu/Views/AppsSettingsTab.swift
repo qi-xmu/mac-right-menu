@@ -6,9 +6,9 @@ struct AppsSettingsTab: View {
     @State private var selection: String?   // AppMenuItem.id
 
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 12) {
             // MARK: - Section: Open With master switch
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Text(String(localized: "Open With Apps"))
                         .fontWeight(.medium)
@@ -27,7 +27,7 @@ struct AppsSettingsTab: View {
             }
             
             // MARK: Show App Icons toggle
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Text(String(localized: "Show App Icons"))
                     Spacer()
@@ -53,7 +53,7 @@ struct AppsSettingsTab: View {
                     .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, 12)
+            .padding(.vertical, 8)
 
 
             // MARK: - List (fills remaining height)
@@ -66,14 +66,14 @@ struct AppsSettingsTab: View {
                 )
                 Spacer()
             } else {
-                VStack(spacing: 0) {
+                VStack(spacing: 4) {
                     List(selection: $selection) {
                         ForEach(appState.appItems) { item in
                             HStack {
                                 Image(nsImage: item.icon)
                                     .resizable()
-                                    .frame(width: 24, height: 24)
-                                VStack(alignment: .leading) {
+                                    .frame(width: 32, height: 32)
+                                VStack(alignment: .leading, spacing: 4) {
                                     Text(item.displayName)
                                         .fontWeight(.medium)
                                     Text(item.appURL.path)

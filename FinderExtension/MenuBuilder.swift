@@ -172,7 +172,9 @@ enum MenuBuilder {
                 // which is also the Settings tab label / action-row title) so
                 // the Finder submenu can read "新建文件" without touching those.
                 let submenuItem = NSMenuItem(title: String(localized: "New File"), action: nil, keyEquivalent: "")
-                submenuItem.image = icon("doc.badge.plus")
+                if configuration.showMenuIcons {
+                    submenuItem.image = icon("doc.badge.plus")
+                }
                 let submenu = NSMenu(title: String(localized: "New File"))
                 for (index, template) in templates.enumerated() {
                     let item = NSMenuItem(title: template.resolvedFileName, action: handlerSelector, keyEquivalent: "")
@@ -209,7 +211,9 @@ enum MenuBuilder {
                 menu.addItem(item)
             } else {
                 let submenuItem = NSMenuItem(title: String(localized: "Open With"), action: nil, keyEquivalent: "")
-                submenuItem.image = icon("menubar.dock.rectangle")
+                if configuration.showMenuIcons {
+                    submenuItem.image = icon("menubar.dock.rectangle")
+                }
                 let submenu = NSMenu(title: String(localized: "Open With"))
                 for (index, app) in enabledApps.enumerated() {
                     let appItem = NSMenuItem(title: app.displayName, action: handlerSelector, keyEquivalent: "")
@@ -245,7 +249,9 @@ enum MenuBuilder {
                 let item = NSMenuItem(title: actionItem.title, action: handlerSelector, keyEquivalent: "")
                 item.target = target
                 item.tag = tag
-                item.image = actionItem.iconName.flatMap { icon($0) } ?? icon("gearshape")
+                if configuration.showMenuIcons {
+                    item.image = actionItem.iconName.flatMap { icon($0) } ?? icon("gearshape")
+                }
                 item.isEnabled = hasSelection
                 menu.addItem(item)
             }

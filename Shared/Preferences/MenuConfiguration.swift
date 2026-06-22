@@ -14,6 +14,10 @@ public struct MenuConfiguration: Codable, Equatable, Sendable {
     /// apps list in Settings is unaffected — this ONLY controls the right-click
     /// menu rendered by FinderSync. Default is true (icons shown).
     public var showAppIcons: Bool
+    /// When false, SF Symbol icons are hidden from top-level (non-submenu) items
+    /// in the Finder contextual menu. Submenu headers and their items are
+    /// unaffected. Default is true (icons shown).
+    public var showMenuIcons: Bool
 
     public init(
         isEnabled: Bool = true,
@@ -21,7 +25,8 @@ public struct MenuConfiguration: Codable, Equatable, Sendable {
         actionItems: [ActionMenuItem] = ActionMenuItem.defaults,
         newFileTemplates: [NewFileTemplate] = NewFileTemplate.defaults,
         appsSectionEnabled: Bool = true,
-        showAppIcons: Bool = true
+        showAppIcons: Bool = true,
+        showMenuIcons: Bool = true
     ) {
         self.isEnabled = isEnabled
         self.appItems = appItems
@@ -29,13 +34,14 @@ public struct MenuConfiguration: Codable, Equatable, Sendable {
         self.newFileTemplates = newFileTemplates
         self.appsSectionEnabled = appsSectionEnabled
         self.showAppIcons = showAppIcons
+        self.showMenuIcons = showMenuIcons
     }
 
-    // Custom Codable: older configs predate `appsSectionEnabled` and
-    // `showAppIcons`; decode both as true so existing users keep seeing their
-    // apps submenu with icons.
+    // Custom Codable: older configs predate `appsSectionEnabled`,
+    // `showAppIcons`, and `showMenuIcons`; decode as true so existing users
+    // keep seeing their icons.
     private enum CodingKeys: String, CodingKey {
-        case isEnabled, appItems, actionItems, newFileTemplates, appsSectionEnabled, showAppIcons
+        case isEnabled, appItems, actionItems, newFileTemplates, appsSectionEnabled, showAppIcons, showMenuIcons
     }
 
     public init(from decoder: Decoder) throws {
@@ -46,6 +52,7 @@ public struct MenuConfiguration: Codable, Equatable, Sendable {
         self.newFileTemplates = try c.decodeIfPresent([NewFileTemplate].self, forKey: .newFileTemplates) ?? NewFileTemplate.defaults
         self.appsSectionEnabled = try c.decodeIfPresent(Bool.self, forKey: .appsSectionEnabled) ?? true
         self.showAppIcons = try c.decodeIfPresent(Bool.self, forKey: .showAppIcons) ?? true
+        self.showMenuIcons = try c.decodeIfPresent(Bool.self, forKey: .showMenuIcons) ?? true
     }
 }
 

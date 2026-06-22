@@ -579,6 +579,17 @@ class AppState: ObservableObject {
         }
     }
 
+    /// Controls whether SF Symbol icons appear on top-level (non-submenu)
+    /// action items in the Finder menu, e.g. Copy Path / Copy File Name /
+    /// Toggle Hidden. Does not affect submenu headers. Default is true.
+    var showMenuIcons: Bool {
+        get { configuration.showMenuIcons }
+        set {
+            configuration.showMenuIcons = newValue
+            saveConfiguration()
+        }
+    }
+
     // MARK: - Actions
 
     func addApp(_ appURL: URL) {

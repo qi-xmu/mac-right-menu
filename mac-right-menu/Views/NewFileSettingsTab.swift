@@ -8,7 +8,7 @@ struct NewFileSettingsTab: View {
     @State private var newFileName = ""
 
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 12) {
             // MARK: - Section: New File master switch
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
@@ -31,7 +31,7 @@ struct NewFileSettingsTab: View {
             Divider()
 
             // MARK: - Section: New File Templates header
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 8) {
                 Text("New File Templates")
                     .font(.headline)
                 Text("Add file templates for creating new files from the right-click menu.")
@@ -51,7 +51,7 @@ struct NewFileSettingsTab: View {
                 )
                 Spacer()
             } else {
-                VStack(spacing: 0) {
+                VStack(spacing: 8) {
                     List(selection: $selection) {
                         ForEach(appState.newFileTemplates) { template in
                             HStack {
