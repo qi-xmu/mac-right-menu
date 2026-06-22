@@ -101,10 +101,8 @@ struct MacRightMenuApp: App {
             SettingsView()
                 .environmentObject(appState)
                 .frame(
-                    minWidth: 560,
-                    maxWidth: 560,
-                    minHeight: 400,
-                    maxHeight: 600
+                    maxWidth: 800,
+                    maxHeight: 640
                 )
         }
         .windowResizability(.contentSize)

@@ -7,6 +7,7 @@ version = "0.1.0"
 
 [tasks]
 rpc-debug = "python tests/rpc-debug/rpc_debug_server.py"
+install = "bash ./Scripts/build-install.sh"
 
 [dependencies]
 python = ">=3.12"
