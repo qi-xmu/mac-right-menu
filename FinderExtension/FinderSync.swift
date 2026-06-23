@@ -7,15 +7,12 @@ private let logger = Logger(subsystem: Constants.extensionBundleID, category: "f
 class FinderSyncExtension: FIFinderSync, @unchecked Sendable {
 
     private let rpcClient = RPCClient()
-    private var cachedConfig: MenuConfiguration = .default
+    private var cachedConfig: MenuConfig = .default
     private let configLock = NSLock()
 
-    /// Pre-built NSMenu reused across right-clicks. `menu(for:)` builds NSMenu
-    /// trees, resolves localized titles, decodes app icons, and renders SF
-    /// Symbol bitmaps — none of that changes between clicks for a given config,
-    /// so we build ONCE when config arrives and hand back the same object every
-    /// time Finder asks. Only the `isEnabled`/`isHidden` flags that depend on
-    /// the live selection are refreshed in `menu(for:)` (cheap property writes).
+    /// Pre-built NSMenu reused across right-clicks. Built once when config
+    /// arrives; `menu(for:)` only refreshes selection-dependent visibility in
+    /// place (cheap property writes via `refreshSelectionState`).
     ///
     /// Mutated from two threads: the config-change handler (RPC background
     /// queue) rebuilds it, and `menu(for:)` (Finder thread) reads + refreshes
@@ -25,8 +22,6 @@ class FinderSyncExtension: FIFinderSync, @unchecked Sendable {
     private var cachedMenu: NSMenu?
     private let menuLock = NSLock()
 
-    var rpc: RPCClient { rpcClient }
-
     // MARK: - Initialization
 
     override init() {
@@ -34,51 +29,35 @@ class FinderSyncExtension: FIFinderSync, @unchecked Sendable {
         logger.notice("FinderSync initialized")
 
         // cachedConfig stays at .default until the RPC connection comes up,
-        // at which point getConfig pulls the real config from the Container.
-        // Reading our own UserDefaults here is unreliable — the two processes
-        // keep separate stores, so it would only ever see a stale/default copy.
+        // at which point getConfig pulls the real menu tree from the Container.
         logger.notice("[Ext] Config: awaiting initial getConfig from Container")
 
         FIFinderSyncController.default().directoryURLs = [URL(fileURLWithPath: "/")]
 
-        // Appearance flips (Light↔Dark) change how MenuBuilder tints SF Symbol
-        // icons. Since the cached menu bakes those bitmaps into its items, a
+        // Appearance flips (Light↔Dark) change how SF Symbol icons are tinted.
+        // Since the cached menu bakes resolved symbol images into its items, a
         // theme flip requires dropping the symbol cache and rebuilding. Both
-        // must run on the main thread: NSImage.lockFocus and
-        // NSWorkspace.shared.icon(forFile:) are main-thread-only APIs, and the
-        // cached menu's items are AppKit objects. The handler below is already
-        // dispatched on .main by the observer's queue param, but rebuild also
-        // does UI work, so it's routed through rebuildOnMain for clarity.
+        // run on the main thread (icon APIs are main-thread-only).
         DistributedNotificationCenter.default().addObserver(
             forName: NSNotification.Name("AppleInterfaceThemeChangedNotification"),
             object: nil,
             queue: .main
         ) { [weak self] _ in
             MenuBuilder.invalidateSymbolCache()
-            self?.rebuildOnMain()
+            DispatchQueue.main.async { self?.rebuildCachedMenu() }
         }
 
         // Refresh the in-memory cache from both channels AND rebuild the cached
         // menu on every change. Both routes (getConfig pull on connect,
-        // configDidChange push on live edits) come through here on an RPC
-        // background queue; cachedConfig is read in menu(for:) on the Finder
-        // thread, so the write is guarded. MenuConfiguration is a value type,
-        // so the swap is safe.
-        //
-        // Warmup + rebuild both hop to the main thread: warmup fills the icon
-        // caches first (so buildMenu hits the cache instead of rasterizing on
-        // Finder's menu-critical path), then rebuild constructs the cached
-        // NSMenu. This also fixes a latent bug where rebuildCachedMenu used to
-        // call NSWorkspace.icon/lockFocus from this RPC background queue.
+        // configDidChange push on live edits) arrive on an RPC background queue.
         rpcClient.setConfigChangeHandler { [weak self] newConfig in
             guard let self else { return }
             self.configLock.lock()
             self.cachedConfig = newConfig
             self.configLock.unlock()
-            let actions = newConfig.actionItems.map { "\($0.actionType):\($0.isEnabled ? "on" : "off")" }.joined(separator: " ")
-            logger.notice("[Ext] Config applied: enabled=\(newConfig.isEnabled) apps=\(newConfig.appItems.count) actions=[\(actions, privacy: .public)] templates=\(newConfig.newFileTemplates.count)")
+            logger.notice("[Ext] Config applied: enabled=\(newConfig.isEnabled, privacy: .public) menus=\(newConfig.menus.count) showIcons=\(newConfig.showAppIcons)")
             // Warm icon caches on the main thread, THEN rebuild the menu so
-            // buildMenu's icon lookups all hit cache. Warmup is idempotent.
+            // buildMenu's icon lookups hit the cache. Warmup is idempotent.
             DispatchQueue.main.async {
                 MenuBuilder.warmupCaches(for: newConfig)
                 self.rebuildCachedMenu()
@@ -101,23 +80,12 @@ class FinderSyncExtension: FIFinderSync, @unchecked Sendable {
 
     // MARK: - Cached Menu
 
-    /// Hop to the main thread, then rebuild the cached NSMenu. Main-thread
-    /// routing is required because buildMenu calls `NSWorkspace.icon(forFile:)`
-    /// and `NSImage.lockFocus` — both main-thread-only AppKit APIs.
-    private func rebuildOnMain() {
-        DispatchQueue.main.async { [weak self] in
-            self?.rebuildCachedMenu()
-        }
-    }
-
     /// Build (or rebuild) the cached NSMenu from the current cachedConfig.
     /// Called when config changes or the appearance flips. Builds the FULL menu
-    /// (all sections) so a single object can serve both items and container
-    //  contexts — `menu(for:)` hides the file-dependent sections when there's
-    /// no selection.
+    /// tree; `menu(for:)` hides per-node selection-dependent items at serve time.
     ///
-    /// - Important: must be called on the main thread (icon APIs require it).
-    ///   Use `rebuildOnMain()` from non-main contexts.
+    /// - Important: must be called on the main thread. Use `rebuildOnMain()`
+    ///   from non-main contexts.
     private func rebuildCachedMenu() {
         configLock.lock()
         let config = cachedConfig
@@ -133,9 +101,7 @@ class FinderSyncExtension: FIFinderSync, @unchecked Sendable {
         }
 
         let menu = MenuBuilder.buildMenu(
-            configuration: config,
-            hasSelection: true,           // build full; visibility handled at serve time
-            targetURL: nil,
+            config: config,
             target: self,
             action: #selector(handleMenuAction(_:))
         )
@@ -148,55 +114,54 @@ class FinderSyncExtension: FIFinderSync, @unchecked Sendable {
     // MARK: - Menu
 
     override func menu(for menuKind: FIMenuKind) -> NSMenu {
-        // Two contextual kinds we serve:
-        //  - .contextualMenuForItems:     right-click on selected file(s)/folder(s)
-        //  - .contextualMenuForContainer: right-click on a folder's empty space
-        //    (this is the "open a folder, select nothing, right-click" case —
-        //    the natural place to offer New File). Sidebar/window/toolbar kinds
-        //    are not relevant and stay empty.
-        guard menuKind == .contextualMenuForItems || menuKind == .contextualMenuForContainer
-        else { return NSMenu() }
+        let selectedURLs = FIFinderSyncController.default().selectedItemURLs() ?? []
+        let targetURL = FIFinderSyncController.default().targetedURL()
 
-        // hasSelection is true only in the .contextualMenuForItems case where
-        // something is actually picked. In the container case selectedItemURLs
-        // is nil → hasSelection false → file-dependent sections are hidden.
-        let hasSelection = FIFinderSyncController.default().selectedItemURLs()?.isEmpty == false
+        // Classify the click target. A selection containing any file counts as
+        // `.file`; folders-only or empty space count as `.dir` (the containing
+        // folder), which keeps folder-oriented items (e.g. New File) visible
+        // when right-clicking empty space.
+        let anyFile = selectedURLs.contains { url in
+            var isDir: ObjCBool = false
+            return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) && !isDir.boolValue
+        }
+        let context: MenuBuilder.TargetContext = (selectedURLs.isEmpty || !anyFile) ? .dir : .file
+        logger.info("[Ext] menu(for:) menuKind=\(menuKind.rawValue) target=\(targetURL?.path ?? "nil", privacy: .public) selected=\(selectedURLs.count) context=\(context == .file ? "file" : "dir", privacy: .public)")
 
         menuLock.lock()
         let menu = cachedMenu
         menuLock.unlock()
 
-        guard let menu else {
-            // No config yet (waiting for first getConfig). Fall back to a fresh
-            // build off the default config so the very first right-click after
-            // launch isn't blank; the cached one takes over once config lands.
-            return MenuBuilder.buildMenu(
-                configuration: .default,
-                hasSelection: hasSelection,
-                targetURL: nil,
-                target: self,
-                action: #selector(handleMenuAction(_:))
-            )
-        }
-
-        // Cheap per-click refresh: only the selection-dependent visibility /
-        // enabled state changes between clicks for a fixed config. The menu
-        // structure, titles, icons, tags stay baked into the cached object.
-        MenuBuilder.refreshSelectionState(menu, hasSelection: hasSelection)
-        return menu
+        // No config yet (waiting for first getConfig): serve an empty menu.
+        // We deliberately do NOT call MenuBuilder.buildMenu here — it resolves
+        // icons via main-thread-only AppKit APIs, and menu(for:) runs on the
+        // Finder thread, so building off-main would race the icon caches.
+        // MenuConfig.default carries no items anyway, so an empty NSMenu is the
+        // exact equivalent. The cached menu takes over once config lands.
+        let resolved = menu ?? NSMenu()
+        MenuBuilder.refreshSelectionState(resolved, context: context, selectedCount: selectedURLs.count)
+        return resolved
     }
 
     // MARK: - Action
 
+    /// A leaf menu item was clicked. Forward its `actionID` plus the current
+    /// Finder selection context to the Container, which resolves the actionID
+    /// via its `ActionDefMap`. The Extension no longer interprets tags or
+    /// builds commands — it is a pure forwarder.
     @objc func handleMenuAction(_ sender: NSMenuItem) {
-        guard let targetURL = FIFinderSyncController.default().targetedURL() else {
-            logger.warning("No target URL available")
-            return
-        }
+        let targetURL = FIFinderSyncController.default().targetedURL()
         let selectedURLs = FIFinderSyncController.default().selectedItemURLs() ?? []
-        configLock.lock()
-        let config = cachedConfig
-        configLock.unlock()
-        MenuActionHandler.handleMenuAction(sender, targetURL: targetURL, selectedURLs: selectedURLs, config: config, client: rpcClient)
+        let actionID = sender.tag
+        logger.notice("[Ext] handleMenuAction actionID=\(actionID) target=\(targetURL?.path ?? "nil", privacy: .public) selected=\(selectedURLs.map(\.path), privacy: .public)")
+        rpcClient.executeAction(
+            MenuAction(actionID: actionID, targetURL: targetURL, selectedURLs: selectedURLs)
+        ) { result in
+            if let result {
+                logger.notice("[RPC OK] actionID=\(actionID, privacy: .public) → \(result.success ? "OK" : "FAIL", privacy: .public)")
+            } else {
+                logger.notice("[RPC DOWN] actionID=\(actionID, privacy: .public)")
+            }
+        }
     }
 }

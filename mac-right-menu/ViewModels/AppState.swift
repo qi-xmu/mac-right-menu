@@ -3,9 +3,27 @@ import os.log
 
 private let logger = Logger(subsystem: Constants.mainAppBundleID, category: "app-state")
 
+/// One editable app row surfaced to the Apps settings tab: the app target
+/// plus its enabled state (which lives on the menu leaf, not the payload).
+struct AppRow: Identifiable, Equatable {
+    let id: String        // == app.id (appURL.path)
+    let app: AppTarget
+    var isEnabled: Bool
+}
+
+/// One editable New File template row surfaced to the File settings tab.
+struct TemplateRow: Identifiable, Equatable {
+    let id: String        // == template.id (resolved file name)
+    let template: NewFileTemplate
+    var isEnabled: Bool
+}
+
 @MainActor
 class AppState: ObservableObject {
-    @Published var configuration: MenuConfiguration {
+    /// The sole source of truth: menu tree (`menu`) + action definitions
+    /// (`actions`). Edits mutate this in place; the `didSet` persists and
+    /// pushes the `menu` half to the Extension.
+    @Published var appConfig: AppConfig {
         didSet {
             saveConfiguration()
         }
@@ -39,14 +57,17 @@ class AppState: ObservableObject {
 
     private lazy var rpcServer: RPCServer = {
         let server = RPCServer(
-            onCommand: { [weak self] command in
+            onAction: { [weak self] action in
                 guard let self else {
                     return CommandResult(success: false, errorDescription: "AppState released")
                 }
-                return await self.executeCommand(command)
+                return await self.executeAction(action)
             },
             getConfig: { [weak self] in
-                self?.configuration ?? SharedUserDefaults.menuConfiguration
+                guard let self else { return .default }
+                var menu = self.appConfig.menu
+                menu.menus.sort { Self.menuSortKey($0) < Self.menuSortKey($1) }
+                return menu
             },
             onHeartbeat: { [weak self] meta in
                 guard let self else { return }
@@ -125,20 +146,15 @@ class AppState: ObservableObject {
             exit(0)
         }
 
-        self.configuration = SharedUserDefaults.menuConfiguration
+        self.appConfig = SharedUserDefaults.appConfig
         loadExtensions()
         writeLockFile()
         _ = rpcServer
         // Registration check is async; it kicks off auto-launch once the
         // pluginkit status is known (see `checkExtensionRegistration`).
-        // We must NOT call `autoLaunchExtensions()` here directly: at this
-        // point every extension's `registrationStatus` is still the default
-        // `.notInstalled`, so `isRegistered` is false and the launch filter
-        // would drop everything.
         checkExtensionRegistration()
         // Probe Full Disk Access so the General settings tab shows a real
-        // status on first open instead of "not checked". Runs off the main
-        // thread; result lands in `fullDiskAccessGranted`.
+        // status on first open instead of "not checked".
         checkFullDiskAccess()
     }
 
@@ -173,12 +189,9 @@ class AppState: ObservableObject {
     ///
     /// FinderSync extensions are `.appex` bundles hosted by the system's plugin
     /// daemon (pkd), NOT LaunchServices applications — so `NSWorkspace.open` /
-    /// `open -b` cannot start them (`LSCopyApplicationURLsForBundleIdentifier`
-    /// fails for appex bundle ids). The correct wake mechanism is
+    /// `open -b` cannot start them. The correct wake mechanism is
     /// `pluginkit -e use -i <bundleID>`, which elects the plug-in for use and
-    /// lets the plugin host load it (verified: extension starts and connects).
-    /// Used both at Container startup (`autoLaunchExtensions`) and after a
-    /// heartbeat-timeout disconnect (`onDisconnected`).
+    /// lets the plugin host load it.
     private func launchExtension(bundleID: String) {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/pluginkit")
@@ -202,13 +215,9 @@ class AppState: ObservableObject {
         }
     }
 
-    /// Check via pluginkit whether the extension is registered with the system,
-    /// decoding the election-state flag (`+`/`-`/`!`/`=`) to distinguish
-    /// Enabled / Disabled / Not Installed. Public so the Extensions tab's
-    /// Refresh button can re-run it after the user toggles the extension in
-    /// System Settings. Also drives the startup auto-launch: once the real
-    /// registration status is known, registered+disconnected extensions with
-    /// `autoLaunch == true` are woken (idempotent under `pluginkit -e use`).
+    /// Check via pluginkit whether the extension is registered with the system.
+    /// Public so the Extensions tab's Refresh button can re-run it after the
+    /// user toggles the extension in System Settings.
     func checkExtensionRegistration() {
         Task {
             let status = await Self.extensionRegistrationStatus()
@@ -218,16 +227,10 @@ class AppState: ObservableObject {
                     logger.notice("[Con] Extension registration status: \(status.rawValue, privacy: .public)")
                 }
             }
-            // Now that registration is known, wake any registered, disconnected
-            // extension the user wants auto-launched. Safe to run on every
-            // refresh: `pluginkit -e use` is idempotent and the `!isConnected`
-            // guard skips extensions that are already alive.
             autoLaunchExtensions()
         }
     }
 
-    /// Deep-link to System Settings → Extensions so the user can enable a
-    /// disabled extension without hunting for the pane.
     func openSystemSettingsForExtensions() {
         if let url = URL(string: "x-apple.systempreferences:com.apple.ExtensionsPreferences") {
             NSWorkspace.shared.open(url)
@@ -237,18 +240,8 @@ class AppState: ObservableObject {
     // MARK: - Full Disk Access
 
     /// Cached Full Disk Access status for the running Container.
-    /// - `nil`:  not probed yet (or probing)
-    /// - `true`: FDA granted — file ops reach any location
-    /// - `false`: FDA missing — TCC-protected paths will fail
-    ///
-    /// Intentionally NOT persisted: FDA is a system-level permission the user
-    /// can revoke at any time in System Settings, so re-probing per launch
-    /// (and on manual refresh) is more reliable than trusting a stale value.
     @Published var fullDiskAccessGranted: Bool?
 
-    /// Probe FDA on a background queue and cache the result on the main actor.
-    /// Called once at init and again whenever the user taps Refresh in the
-    /// General settings tab (e.g. after granting access in System Settings).
     func checkFullDiskAccess() {
         DispatchQueue.global(qos: .utility).async {
             let granted = FullDiskAccess.isGranted()
@@ -258,10 +251,6 @@ class AppState: ObservableObject {
         }
     }
 
-    /// Deep-link to System Settings → Privacy & Security → Full Disk Access.
-    /// macOS offers no programmatic grant (unlike Photos/Contacts), so the
-    /// user must add the app and toggle it manually; this just lands them on
-    /// the right pane.
     func openSystemSettingsForFullDiskAccess() {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
             NSWorkspace.shared.open(url)
@@ -270,8 +259,6 @@ class AppState: ObservableObject {
 
     /// Probe `pluginkit -m -p com.apple.FinderSync` and decode the leading
     /// election-state flag of our extension's line into a `RegistrationStatus`.
-    /// On any failure (pluginkit missing, parse error, exit non-zero) we
-    /// conservatively report `.notInstalled` so the UI shows actionable guidance.
     nonisolated private static func extensionRegistrationStatus() async -> RegistrationStatus {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .utility).async {
@@ -294,52 +281,45 @@ class AppState: ObservableObject {
         }
     }
 
-    /// Decode the election-state flag from `pluginkit -m` output. Each line
-    /// begins with a flag char (after optional leading whitespace); we locate
-    /// our extension's line and read that flag. See `RegistrationStatus` docs
-    /// and the `pluginkit` man page for the flag semantics.
     nonisolated private static func parseRegistrationStatus(from output: String) -> RegistrationStatus {
         guard let line = output
             .components(separatedBy: .newlines)
-            // A line "contains" the bundle id only when it actually appears
-            // (substring match; false positives are not a concern here since
-            // bundle ids are unique reverse-DNS strings).
             .first(where: { $0.contains(Constants.extensionBundleID) })
         else { return .notInstalled }
-        // The flag is the first non-whitespace character on the line.
         guard let flag = line.first(where: { !$0.isWhitespace }) else {
             return .notInstalled
         }
         switch flag {
-        // Man page: `+` = "elected to use the plug-in";
-        //           `!` = "elected to use the plug-in for debugger use".
-        // Both are "elected to use", i.e. the extension is active — a
-        // FinderSync extension flagged `!` runs normally (it just signals the
-        // user enabled it for debugging), so it must not read as disabled.
         case "+", "!":  return .enabled
-        // `-` = "elected to ignore"; `=` = "superseded by another plug-in".
         case "-", "=":  return .disabled
-        default:        return .disabled   // `?` unknown → treat as actionable
+        default:        return .disabled
         }
     }
 
     // MARK: - Config Sync
 
+    /// Stable sort key for a top-level menu item so that the `menus` array is
+    /// transmitted (and persisted) in actionID order: New File (0…), Open With
+    /// (1000…), general operations (2000…), shell (4000…). Leaf nodes use
+    /// their own actionID; section headers use the first leaf's actionID (or
+    /// zero if the section is empty).
+    private static func menuSortKey(_ item: MenuItem) -> Int {
+        item.subMenus.first?.actionID ?? item.actionID
+    }
+
     func saveConfiguration() {
-        SharedUserDefaults.menuConfiguration = configuration
-        // Push the new config to any running Extension so its in-memory cache
+        var sorted = appConfig
+        sorted.menu.menus.sort { Self.menuSortKey($0) < Self.menuSortKey($1) }
+        SharedUserDefaults.appConfig = sorted
+        // Push the menu tree to any running Extension so its in-memory cache
         // refreshes immediately. Each process keeps its own UserDefaults, so
-        // the full config travels in the notification payload.
-        rpcServer.broadcastConfig(configuration)
+        // the full tree travels in the notification payload.
+        rpcServer.broadcastConfig(sorted.menu)
     }
 
     func shutdownExtensions() {
         removeLockFile()
         rpcServer.broadcastShutdown()
-        // Brief delay so connected Extensions can receive the shutdown
-        // notification before the listener is torn down. Capture rpcServer
-        // locally to avoid referencing a MainActor-isolated property from
-        // the @Sendable closure that Task.sleep creates.
         let server = rpcServer
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(300))
@@ -359,12 +339,6 @@ class AppState: ObservableObject {
 
     /// Export the current debug log to a plain-text file the user picks via
     /// NSSavePanel. Returns the written URL on success, nil on cancel/error.
-    ///
-    /// Format: one entry per block, timestamp + badge + summary + (optional)
-    /// indented detail. Plain text (not JSON) so it's trivially greppable and
-    /// pasteable into a bug report / chat. Newest-first ordering matches the
-    /// Debug Log window so the exported file reads top-to-bottom chronologically
-    /// in the same direction the user is used to scanning.
     @discardableResult
     func exportDebugLog() -> URL? {
         guard !debugLog.isEmpty else { return nil }
@@ -393,9 +367,6 @@ class AppState: ObservableObject {
         return f
     }()
 
-    /// Render the in-memory log as export-ready plain text. Newest entry first
-    /// (matches the window). Each entry is a header line + optional indented
-    /// detail block + blank separator.
     private func renderDebugLogText() -> String {
         let tsFmt = DateFormatter()
         tsFmt.dateFormat = "yyyy-MM-dd HH:mm:ss"
@@ -426,8 +397,6 @@ class AppState: ObservableObject {
             lines.append("\(header) \(badge)")
             lines.append("  \(entry.summary)")
             if let detail = entry.detail, !detail.isEmpty {
-                // Indent each detail line so the block stands out under its
-                // header even in a plain-text viewer.
                 detail.split(separator: "\n").forEach { lines.append("    \($0)") }
             }
             lines.append("")
@@ -436,9 +405,6 @@ class AppState: ObservableObject {
     }
 
     /// Append a pre-built entry on the main actor, trimming to the cap.
-    /// Used for wake/lifecycle events generated directly on the main actor.
-    /// No-op when the Debug Log is disabled (the toggle in General settings);
-    /// gating here covers every recording path in one place.
     private func appendDebugEntry(_ entry: DebugLogEntry) {
         guard SharedUserDefaults.debugLogEnabled else { return }
         debugLog.append(entry)
@@ -451,15 +417,10 @@ class AppState: ObservableObject {
     /// (ping/pong) are folded into the last entry if it is itself a heartbeat
     /// group, so the log isn't dominated by 1s-interval ping/pong traffic.
     private func appendDebugActivity(_ activity: RPCActivity) {
-        // Fold consecutive heartbeats into the previous heartbeat entry.
         if activity.isHeartbeat,
            let last = debugLog.last,
            last.category == .rpc,
            (last.method == "ping" || last.method == "pong") {
-            // Keep folding the same direction+method as the group leader so
-            // a ping group doesn't absorb a pong (or vice-versa) of the other
-            // direction — but we DO want consecutive same-method heartbeats
-            // (e.g. repeated Con→Ext pings) to accumulate.
             debugLog[debugLog.count - 1].count += 1
             debugLog[debugLog.count - 1].endTimestamp = Date()
             return
@@ -470,16 +431,14 @@ class AppState: ObservableObject {
             method: activity.method,
             rpcID: activity.rpcID,
             summary: activity.summary,
-            detail: activity.detail
+            detail: activity.detail,
+            rawPayload: activity.rawPayload
         )
         appendDebugEntry(entry)
     }
 
     // MARK: - Lock file (single-instance guard)
 
-    /// Try to acquire an exclusive flock on `<AppGroup>/container.lock`.
-    /// Returns the file descriptor on success, -1 on failure.
-    /// The fd must be kept open for the process lifetime.
     nonisolated private static func acquireInstanceLock() -> Int32 {
         guard let url = Constants.containerLockURL else { return -1 }
         let dir = url.deletingLastPathComponent()
@@ -513,115 +472,268 @@ class AppState: ObservableObject {
         removeLockFile()
     }
 
-    // MARK: - Convenience accessors
+    // MARK: - Menu editing (tree + ActionDefMap, surfaced as typed rows)
 
+    /// Stable node IDs for the two managed sections. AppState owns these
+    /// sections' layout; operations are loose top-level leaves with id
+    /// "op.<rawValue>".
+    private static let appsSectionID = "section.apps"
+    private static let newFileSectionID = "section.newFile"
+
+    // ── Global toggles ──
+
+    /// Master switch for the whole menu.
     var isEnabled: Bool {
-        get { configuration.isEnabled }
-        set {
-            configuration.isEnabled = newValue
-            saveConfiguration()
-        }
+        get { appConfig.menu.isEnabled }
+        set { appConfig.menu.isEnabled = newValue }
     }
 
-    var appItems: [AppMenuItem] {
-        get { configuration.appItems }
-        set {
-            configuration.appItems = newValue
-            saveConfiguration()
-        }
+    /// Global icon toggle (applies to every node whose own `showAppIcons` is
+    /// also true).
+    var showIcons: Bool {
+        get { appConfig.menu.showAppIcons }
+        set { appConfig.menu.showAppIcons = newValue }
     }
 
-    var actionItems: [ActionMenuItem] {
-        get { configuration.actionItems }
-        set {
-            configuration.actionItems = newValue
-            saveConfiguration()
-        }
-    }
+    // ── New File section ──
 
-    var newFileTemplates: [NewFileTemplate] {
-        get { configuration.newFileTemplates }
-        set {
-            configuration.newFileTemplates = newValue
-            saveConfiguration()
-        }
-    }
-
-    /// Master switch for the "Open With" section, surfaced in the Apps tab
-    /// header. Mirrors how the New File section is gated by the `.newFile`
-    /// action item below.
-    var appsSectionEnabled: Bool {
-        get { configuration.appsSectionEnabled }
-        set {
-            configuration.appsSectionEnabled = newValue
-            saveConfiguration()
-        }
-    }
-
-    /// The New File section's master switch lives in the `.newFile` action
-    /// item (gated in MenuBuilder). Exposed here for the File tab header toggle.
     var newFileSectionEnabled: Bool {
+        get { appConfig.menu.menus.first(where: { $0.id == Self.newFileSectionID })?.isEnabled ?? true }
+        set { ensureSection(Self.newFileSectionID, title: String(localized: "New File"), icon: .sfSymbol("doc.badge.plus"), showCondition: .isDir, multiItemSupport: false, isEnabled: newValue) }
+    }
+
+    var templateRows: [TemplateRow] {
+        guard let section = appConfig.menu.menus.first(where: { $0.id == Self.newFileSectionID }) else { return [] }
+        return section.subMenus.compactMap { leaf in
+            guard case .newFile(let template) = appConfig.actions[leaf.actionID] else { return nil }
+            return TemplateRow(id: template.id, template: template, isEnabled: leaf.isEnabled)
+        }
+    }
+
+    func addTemplate(fileName: String, fileExtension: String) {
+        let template = NewFileTemplate(fileName: fileName, fileExtension: fileExtension)
+        var list = templateRows.map { (template: $0.template, isEnabled: $0.isEnabled) }
+        guard !list.contains(where: { $0.template.id == template.id }) else { return }
+        list.append((template: template, isEnabled: true))
+        Self.rebuildNewFileSection(in: &appConfig, templates: list, sectionEnabled: newFileSectionEnabled)
+    }
+
+    func removeTemplate(at offsets: IndexSet) {
+        var list = templateRows.map { (template: $0.template, isEnabled: $0.isEnabled) }
+        list.remove(atOffsets: offsets)
+        Self.rebuildNewFileSection(in: &appConfig, templates: list, sectionEnabled: newFileSectionEnabled)
+    }
+
+    private func setLeafEnabled(sectionID: String, leafPrefix: String, id: String, enabled: Bool) {
+        guard let sIdx = appConfig.menu.menus.firstIndex(where: { $0.id == sectionID }),
+              let leafIdx = appConfig.menu.menus[sIdx].subMenus.firstIndex(where: { $0.id == "\(leafPrefix)\(id)" })
+        else { return }
+        appConfig.menu.menus[sIdx].subMenus[leafIdx].isEnabled = enabled
+    }
+
+    func setTemplateEnabled(id: String, enabled: Bool) {
+        setLeafEnabled(sectionID: Self.newFileSectionID, leafPrefix: "newFile.", id: id, enabled: enabled)
+    }
+
+    func setAppEnabled(id: String, enabled: Bool) {
+        setLeafEnabled(sectionID: Self.appsSectionID, leafPrefix: "app.", id: id, enabled: enabled)
+    }
+
+    // ── Open With section ──
+
+    var appsSectionEnabled: Bool {
+        get { appConfig.menu.menus.first(where: { $0.id == Self.appsSectionID })?.isEnabled ?? true }
+        set { ensureSection(Self.appsSectionID, title: String(localized: "Open With"), icon: .sfSymbol("menubar.dock.rectangle"), showCondition: .both, multiItemSupport: true, isEnabled: newValue) }
+    }
+
+    /// Whether app icons are shown in the Open With submenu. Controls only the
+    /// individual app leaf items — the section header's SF Symbol icon is
+    /// always gated by the global `showIcons` toggle.
+    var appsShowAppIcons: Bool {
         get {
-            configuration.actionItems.first(where: { $0.actionType == .newFile })?.isEnabled ?? false
+            guard let section = appConfig.menu.menus.first(where: { $0.id == Self.appsSectionID }),
+                  let firstLeaf = section.subMenus.first
+            else { return false }
+            return firstLeaf.showAppIcons
         }
         set {
-            if let index = configuration.actionItems.firstIndex(where: { $0.actionType == .newFile }) {
-                configuration.actionItems[index].isEnabled = newValue
-                saveConfiguration()
+            guard let idx = appConfig.menu.menus.firstIndex(where: { $0.id == Self.appsSectionID }) else { return }
+            var updated = appConfig.menu.menus
+            for leafIdx in updated[idx].subMenus.indices {
+                updated[idx].subMenus[leafIdx].showAppIcons = newValue
             }
+            appConfig.menu.menus = updated
         }
     }
 
-    /// Controls whether app icons appear in the Finder contextual menu.
-    /// When false, only text labels are shown for "Open With" / "Open in X".
-    var showAppIcons: Bool {
-        get { configuration.showAppIcons }
-        set {
-            configuration.showAppIcons = newValue
-            saveConfiguration()
+    var appRows: [AppRow] {
+        guard let section = appConfig.menu.menus.first(where: { $0.id == Self.appsSectionID }) else { return [] }
+        return section.subMenus.compactMap { leaf in
+            guard case .openWith(let app) = appConfig.actions[leaf.actionID] else { return nil }
+            return AppRow(id: app.id, app: app, isEnabled: leaf.isEnabled)
         }
     }
-
-    /// Controls whether SF Symbol icons appear on top-level (non-submenu)
-    /// action items in the Finder menu, e.g. Copy Path / Copy File Name /
-    /// Toggle Hidden. Does not affect submenu headers. Default is true.
-    var showMenuIcons: Bool {
-        get { configuration.showMenuIcons }
-        set {
-            configuration.showMenuIcons = newValue
-            saveConfiguration()
-        }
-    }
-
-    // MARK: - Actions
 
     func addApp(_ appURL: URL) {
-        let newItem = AppMenuItem(appURL: appURL, isEnabled: true)
-        if !configuration.appItems.contains(where: { $0.id == newItem.id }) {
-            configuration.appItems.append(newItem)
-            saveConfiguration()
-        }
+        let target = AppTarget(appURL: appURL)
+        var list = appRows.map { (app: $0.app, isEnabled: $0.isEnabled) }
+        guard !list.contains(where: { $0.app.id == target.id }) else { return }
+        list.append((app: target, isEnabled: true))
+        let showIcons = appsShowAppIcons
+        Self.rebuildAppsSection(in: &appConfig, apps: list, sectionEnabled: appsSectionEnabled, showAppIcons: showIcons)
     }
 
     func removeApp(at offsets: IndexSet) {
-        configuration.appItems.remove(atOffsets: offsets)
-        saveConfiguration()
+        var list = appRows.map { (app: $0.app, isEnabled: $0.isEnabled) }
+        let showIcons = appsShowAppIcons
+        list.remove(atOffsets: offsets)
+        Self.rebuildAppsSection(in: &appConfig, apps: list, sectionEnabled: appsSectionEnabled, showAppIcons: showIcons)
     }
 
     func moveApp(from source: IndexSet, to destination: Int) {
-        configuration.appItems.move(fromOffsets: source, toOffset: destination)
-        saveConfiguration()
+        var list = appRows.map { (app: $0.app, isEnabled: $0.isEnabled) }
+        let showIcons = appsShowAppIcons
+        list.move(fromOffsets: source, toOffset: destination)
+        Self.rebuildAppsSection(in: &appConfig, apps: list, sectionEnabled: appsSectionEnabled, showAppIcons: showIcons)
     }
 
-    func toggleAction(_ actionType: ActionType) {
-        guard let index = configuration.actionItems.firstIndex(where: { $0.actionType == actionType }) else { return }
-        configuration.actionItems[index].isEnabled.toggle()
-        saveConfiguration()
+    // ── General operations ──
+
+    func operationEnabled(_ op: GeneralOperation) -> Bool {
+        appConfig.menu.menus.first { $0.id == "op.\(op.rawValue)" }?.isEnabled ?? false
+    }
+
+    func setOperation(_ op: GeneralOperation, enabled: Bool) {
+        let id = Self.opActionID(op)
+        if let idx = appConfig.menu.menus.firstIndex(where: { $0.id == "op.\(op.rawValue)" }) {
+            // Batch both writes (menu + actions) into a single didSet trigger
+            var updated = appConfig
+            updated.menu.menus[idx].isEnabled = enabled
+            updated.actions[id] = enabled ? .general(operation: op) : nil
+            appConfig = updated
+        } else if enabled {
+            var updated = appConfig
+            updated.actions[id] = .general(operation: op)
+            updated.menu.menus.append(MenuItem(
+                id: "op.\(op.rawValue)",
+                showAppIcons: true,
+                showCondition: .both,
+                multiItemSupport: true,
+                actionID: id,
+                icon: .sfSymbol(op.systemIconName),
+                name: op.displayTitle
+            ))
+            appConfig = updated
+        }
     }
 
     func resetToDefaults() {
-        configuration = .default
-        saveConfiguration()
+        appConfig = .default
+    }
+
+    // MARK: - Section surgery helpers
+
+    /// Ensure a top-level section node exists with the given id/title/icon,
+    /// creating it if missing, and set its enabled state. Used by the section
+    /// master toggles so the user can flip a section off even before any items
+    /// are added.
+    private func ensureSection(_ id: String, title: String, icon: MenuIcon, showCondition: ShowCondition, multiItemSupport: Bool, isEnabled: Bool) {
+        if let idx = appConfig.menu.menus.firstIndex(where: { $0.id == id }) {
+            var updated = appConfig.menu.menus
+            updated[idx].isEnabled = isEnabled
+            updated[idx].showAppIcons = true
+            appConfig.menu.menus = updated
+        } else {
+            appConfig.menu.menus.append(MenuItem(
+                id: id,
+                isEnabled: isEnabled,
+                showAppIcons: true,
+                showCondition: showCondition,
+                multiItemSupport: multiItemSupport,
+                actionID: 0,
+                icon: icon,
+                name: title
+            ))
+        }
+    }
+
+    /// Rebuild the New File section from a typed list: clear old template
+    /// actions (0..<1000), then assign actionID = 0 + index for each template.
+    private static func rebuildNewFileSection(in config: inout AppConfig, templates: [(template: NewFileTemplate, isEnabled: Bool)], sectionEnabled: Bool) {
+        for key in config.actions.keys where key >= 0 && key < 1000 {
+            config.actions[key] = nil
+        }
+        let leaves = templates.enumerated().map { index, pair -> MenuItem in
+            let id = Constants.TagBase.newFile.rawValue + index
+            config.actions[id] = .newFile(template: pair.template)
+            return MenuItem(
+                id: "newFile.\(pair.template.id)",
+                isEnabled: pair.isEnabled,
+                showAppIcons: false,
+                showCondition: .isDir,
+                multiItemSupport: false,
+                actionID: id,
+                icon: .none,
+                name: pair.template.resolvedFileName
+            )
+        }
+        if let idx = config.menu.menus.firstIndex(where: { $0.id == newFileSectionID }) {
+            config.menu.menus[idx].isEnabled = sectionEnabled
+            config.menu.menus[idx].showAppIcons = true
+            config.menu.menus[idx].subMenus = leaves
+        } else {
+            config.menu.menus.append(MenuItem(
+                id: newFileSectionID, isEnabled: sectionEnabled, showAppIcons: true,
+                showCondition: .isDir, multiItemSupport: false, actionID: 0,
+                icon: .sfSymbol("doc.badge.plus"), name: String(localized: "New File"),
+                subMenus: leaves
+            ))
+        }
+    }
+
+    /// Rebuild the Open With section from a typed list: clear old app actions
+    /// (1000..<2000), then assign actionID = 1000 + index for each app.
+    /// `showAppIcons` is the current value of the "Show App Icons" toggle
+    /// (snapped before rebuild so adding/removing an app preserves the user's
+    /// preference).
+    private static func rebuildAppsSection(in config: inout AppConfig, apps: [(app: AppTarget, isEnabled: Bool)], sectionEnabled: Bool, showAppIcons: Bool) {
+        for key in config.actions.keys where key >= 1000 && key < 2000 {
+            config.actions[key] = nil
+        }
+        let leaves = apps.enumerated().map { index, pair -> MenuItem in
+            let id = Constants.TagBase.appItem.rawValue + index
+            config.actions[id] = .openWith(app: pair.app)
+            return MenuItem(
+                id: "app.\(pair.app.id)",
+                isEnabled: pair.isEnabled,
+                showAppIcons: showAppIcons,
+                showCondition: .both,
+                multiItemSupport: true,
+                actionID: id,
+                icon: .appIcon(path: pair.app.appURL.path),
+                name: pair.app.displayName
+            )
+        }
+        if let idx = config.menu.menus.firstIndex(where: { $0.id == appsSectionID }) {
+            config.menu.menus[idx].isEnabled = sectionEnabled
+            config.menu.menus[idx].showAppIcons = true
+            config.menu.menus[idx].subMenus = leaves
+        } else {
+            config.menu.menus.append(MenuItem(
+                id: appsSectionID, isEnabled: sectionEnabled, showAppIcons: true,
+                showCondition: .both, multiItemSupport: true, actionID: 0,
+                icon: .sfSymbol("menubar.dock.rectangle"), name: String(localized: "Open With"),
+                subMenus: leaves
+            ))
+        }
+    }
+
+    private static func opActionID(_ op: GeneralOperation) -> Int {
+        switch op {
+        case .copyPath:     return Constants.TagBase.copyPath.rawValue
+        case .copyFileName: return Constants.TagBase.copyFileName.rawValue
+        case .toggleHidden: return Constants.TagBase.toggleHidden.rawValue
+        }
     }
 
     // MARK: - Command Execution
@@ -633,20 +745,14 @@ class AppState: ObservableObject {
 
     // MARK: - Debug Log Settings
 
-    /// Whether the Debug Log window records RPC/wake events. Off by default;
-    /// when off, all append paths short-circuit so the bookkeeping is free.
     var debugLogEnabled: Bool {
         get { SharedUserDefaults.debugLogEnabled }
         set {
             SharedUserDefaults.debugLogEnabled = newValue
-            // Clear any stale records when disabling so the window doesn't
-            // show historical data the user no longer wants surfaced.
             if !newValue { debugLog.removeAll() }
         }
     }
 
-    /// Whether the Execution Log window records command executions. On by
-    /// default (the primary user-facing log). When off, `appendLog` no-ops.
     var executionLogEnabled: Bool {
         get { SharedUserDefaults.executionLogEnabled }
         set {
@@ -655,114 +761,157 @@ class AppState: ObservableObject {
         }
     }
 
-    /// Execute a command received from the Extension.
-    /// Returns the real outcome so the RPC response reflects success/failure
-    /// and so the Execution Log records the same result the caller observed.
-    nonisolated func executeCommand(_ command: CommandRequest) async -> CommandResult {
-        let actionName = Self.actionName(command.action)
+    /// Execute an action received from the Extension. Resolves `actionID` via
+    /// the current `ActionDefMap` and runs the matching `ActionDef`. Returns
+    /// the real outcome so the RPC response reflects success/failure and the
+    /// Execution Log records the same result the caller observed.
+    nonisolated func executeAction(_ action: MenuAction) async -> CommandResult {
+        let actionID = action.actionID
+
+        // Snapshot the action definition on the main actor (AppState is
+        // @MainActor). Execution itself runs off-actor.
+        let def: ActionDef? = await MainActor.run { self.appConfig.actions[actionID] }
+        guard let def else {
+            logger.warning("[Con] executeAction: unknown actionID \(actionID)")
+            let result = CommandResult(success: false, errorDescription: "unknown actionID \(actionID)")
+            await appendLog(actionName: "unknown(\(actionID))", files: [], result: result, shellCommand: nil, logOnly: false)
+            return result
+        }
+
+        let actionName = Self.actionName(for: def)
+
+        // Effective targets: the actual selection, or the containing folder
+        // (targetURL) when right-clicking empty space.
+        let effectiveURLs: [URL] = action.selectedURLs.isEmpty
+            ? (action.targetURL.map { [$0] } ?? [])
+            : action.selectedURLs
 
         // commandLogOnly: record receipt but skip execution.
         if SharedUserDefaults.commandLogOnly {
             logger.notice("""
-                [Con][RPC RECV→DISPATCH] action=\(command.action.rawValue, privacy: .public) \
-                files=\(command.files, privacy: .public) \
-                cmd=\(command.command ?? "nil", privacy: .public) \
-                extra=\(command.extra?.description ?? "nil", privacy: .public)
+                [Con][RPC RECV→DISPATCH] actionID=\(actionID, privacy: .public) \
+                files=\(effectiveURLs.map(\.path), privacy: .public)
                 """)
             let result = CommandResult(success: true)
-            await appendLog(command: command, actionName: actionName,
-                            result: result, shellCommand: nil, logOnly: true)
+            await appendLog(actionName: actionName, files: effectiveURLs.map(\.path), result: result, shellCommand: nil, logOnly: true)
             return result
         }
 
-        let fileURLs = command.files.map { URL(fileURLWithPath: $0) }
         var result: CommandResult
         var shellCommand: String? = nil
 
-        switch command.action {
-        case .openWithApp:
-            guard let appPath = command.extra?["appPath"] else {
-                logger.warning("openWithApp: missing appPath")
-                result = CommandResult(success: false, errorDescription: "openWithApp: missing appPath")
-                break
-            }
-            let appURL = URL(fileURLWithPath: appPath)
-            do {
-                let config = NSWorkspace.OpenConfiguration()
-                config.promptsUserIfNeeded = true
-                let launched = try await NSWorkspace.shared.open(fileURLs, withApplicationAt: appURL, configuration: config)
-                logger.notice("Opened \(fileURLs.count) file(s) with \(launched.localizedName ?? command.extra?["appDisplayName"] ?? "", privacy: .public)")
-                result = CommandResult(success: true)
-            } catch {
-                logger.error("openWithApp failed: \(error.localizedDescription)")
-                result = CommandResult(success: false, errorDescription: "openWithApp failed: \(error.localizedDescription)")
-            }
+        switch def {
+        case .newFile(let template):
+            result = await Self.performNewFile(template: template,
+                                               targetURL: action.targetURL,
+                                               selectedURLs: action.selectedURLs)
+        case .openWith(let app):
+            result = await Self.performOpenWith(app: app, urls: effectiveURLs)
+        case .general(let operation):
+            result = Self.performGeneral(operation, urls: effectiveURLs)
+        case .custom(let command):
+            // Reserved (shell); not yet wired in the UI.
+            shellCommand = command
+            logger.notice("[Con] custom action (unimplemented): \(command, privacy: .public)")
+            result = CommandResult(success: false, errorDescription: "custom action not implemented")
+        }
 
+        await appendLog(actionName: actionName, files: effectiveURLs.map(\.path), result: result, shellCommand: shellCommand, logOnly: false)
+        return result
+    }
+
+    /// Human-readable name for an `ActionDef`, used in log entries.
+    nonisolated private static func actionName(for def: ActionDef) -> String {
+        switch def {
+        case .newFile:           return "newFile"
+        case .openWith:          return "openWith"
+        case .general(let op):   return op.rawValue
+        case .custom:            return "shell"
+        }
+    }
+
+    /// Create a new file from a template. The directory is derived from the
+    /// Finder context that the Extension forwarded (this logic used to live in
+    /// the Extension; it's centralized here so the Container owns behavior):
+    ///   - a selected folder → create inside it
+    ///   - a selected file   → create in its parent
+    ///   - empty space        → create in `targetURL` (the containing folder)
+    nonisolated private static func performNewFile(template: NewFileTemplate, targetURL: URL?, selectedURLs: [URL]) async -> CommandResult {
+        let dirURL: URL
+        if let first = selectedURLs.first {
+            var isDir: ObjCBool = false
+            if FileManager.default.fileExists(atPath: first.path, isDirectory: &isDir), isDir.boolValue {
+                dirURL = first
+            } else {
+                dirURL = first.deletingLastPathComponent()
+            }
+        } else if let target = targetURL {
+            dirURL = target
+        } else {
+            return CommandResult(success: false, errorDescription: "newFile: no target directory")
+        }
+
+        let fm = FileManager.default
+        let baseName = template.resolvedFileName
+        var fileURL = dirURL.appendingPathComponent(baseName)
+        var counter = 1
+        while fm.fileExists(atPath: fileURL.path) {
+            guard counter < 1000 else {
+                return CommandResult(success: false, errorDescription: "newFile: too many name collisions for \(baseName)")
+            }
+            let name = (baseName as NSString).deletingPathExtension
+            let ext = (baseName as NSString).pathExtension
+            fileURL = dirURL.appendingPathComponent("\(name) \(counter).\(ext)")
+            counter += 1
+        }
+        do {
+            let content = template.defaultContent.data(using: .utf8) ?? Data()
+            try content.write(to: fileURL)
+            logger.notice("Created new file: \(fileURL.path)")
+            return CommandResult(success: true)
+        } catch {
+            logger.error("newFile failed: \(error.localizedDescription)")
+            return CommandResult(success: false, errorDescription: "newFile failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// Open the given URLs with an application.
+    nonisolated private static func performOpenWith(app: AppTarget, urls: [URL]) async -> CommandResult {
+        guard !urls.isEmpty else {
+            return CommandResult(success: false, errorDescription: "openWith: nothing to open")
+        }
+        do {
+            let config = NSWorkspace.OpenConfiguration()
+            config.promptsUserIfNeeded = true
+            let launched = try await NSWorkspace.shared.open(urls, withApplicationAt: app.appURL, configuration: config)
+            logger.notice("Opened \(urls.count) item(s) with \(launched.localizedName ?? app.displayName)")
+            return CommandResult(success: true)
+        } catch {
+            logger.error("openWith failed: \(error.localizedDescription)")
+            return CommandResult(success: false, errorDescription: "openWith failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// Run a built-in general operation (copy path / copy name / toggle hidden).
+    nonisolated private static func performGeneral(_ operation: GeneralOperation, urls: [URL]) -> CommandResult {
+        switch operation {
         case .copyPath:
-            let paths = fileURLs.map(\.path).joined(separator: "\n")
+            let paths = urls.map(\.path).joined(separator: "\n")
             let pb = NSPasteboard.general
             pb.clearContents()
             pb.setString(paths, forType: .string)
-            logger.notice("Copied \(fileURLs.count) path(s)")
-            result = CommandResult(success: true)
-
+            logger.notice("Copied \(urls.count) path(s)")
+            return CommandResult(success: true)
         case .copyFileName:
-            let names = fileURLs.map(\.lastPathComponent).joined(separator: "\n")
+            let names = urls.map(\.lastPathComponent).joined(separator: "\n")
             let pb = NSPasteboard.general
             pb.clearContents()
             pb.setString(names, forType: .string)
-            logger.notice("Copied \(fileURLs.count) file name(s)")
-            result = CommandResult(success: true)
-
-        case .newFile:
-            guard let indexStr = command.extra?["templateIndex"],
-                  let index = Int(indexStr),
-                  let targetURL = fileURLs.first
-            else {
-                logger.warning("newFile: invalid payload")
-                result = CommandResult(success: false, errorDescription: "newFile: invalid payload")
-                break
-            }
-            // Match MenuBuilder: only enabled templates are listed, and the
-            // incoming index is relative to that filtered list. Filter here
-            // with the same predicate so the index resolves to the same template.
-            let templates = SharedUserDefaults.menuConfiguration.newFileTemplates.filter(\.isEnabled)
-            guard index >= 0, index < templates.count else {
-                logger.warning("newFile: template index \(index) out of range")
-                result = CommandResult(success: false, errorDescription: "newFile: template index \(index) out of range")
-                break
-            }
-            let template = templates[index]
-            let fm = FileManager.default
-            var isDir: ObjCBool = false
-            let parentDir: URL
-            if fm.fileExists(atPath: targetURL.path, isDirectory: &isDir), isDir.boolValue {
-                parentDir = targetURL
-            } else {
-                parentDir = targetURL.deletingLastPathComponent()
-            }
-            let fileName = template.resolvedFileName
-            var fileURL = parentDir.appendingPathComponent(fileName)
-            var counter = 1
-            while fm.fileExists(atPath: fileURL.path) {
-                let name = (fileName as NSString).deletingPathExtension
-                let ext = (fileName as NSString).pathExtension
-                fileURL = parentDir.appendingPathComponent("\(name) \(counter).\(ext)")
-                counter += 1
-            }
-            do {
-                let content = template.defaultContent.data(using: .utf8) ?? Data()
-                try content.write(to: fileURL)
-                logger.notice("Created new file: \(fileURL.lastPathComponent)")
-                result = CommandResult(success: true)
-            } catch {
-                logger.error("newFile failed: \(error.localizedDescription)")
-                result = CommandResult(success: false, errorDescription: "newFile failed: \(error.localizedDescription)")
-            }
-
+            logger.notice("Copied \(urls.count) file name(s)")
+            return CommandResult(success: true)
         case .toggleHidden:
             var failed: String?
-            for url in fileURLs {
+            for url in urls {
                 do {
                     var rv = URLResourceValues()
                     let cur = try url.resourceValues(forKeys: [.isHiddenKey])
@@ -776,65 +925,17 @@ class AppState: ObservableObject {
                     break
                 }
             }
-            result = failed.map { CommandResult(success: false, errorDescription: "toggleHidden failed: \($0)") }
+            return failed.map { CommandResult(success: false, errorDescription: "toggleHidden failed: \($0)") }
                 ?? CommandResult(success: true)
-
-        case .shell:
-            guard let cmd = command.command else {
-                logger.warning("shell: missing command")
-                result = CommandResult(success: false, errorDescription: "shell: missing command")
-                break
-            }
-            let task = Process()
-            task.executableURL = URL(fileURLWithPath: "/bin/bash")
-            let substituted = cmd.replacingOccurrences(of: "{}", with: command.files.joined(separator: " "))
-            shellCommand = substituted
-            let errPipe = Pipe()
-            task.standardError = errPipe
-            task.arguments = ["-c", substituted]
-            do {
-                try task.run()
-                task.waitUntilExit()
-                let status = task.terminationStatus
-                if status == 0 {
-                    logger.notice("Shell executed: \(substituted, privacy: .public)")
-                    result = CommandResult(success: true)
-                } else {
-                    let errData = try errPipe.fileHandleForReading.readToEnd() ?? Data()
-                    let stderr = String(data: errData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                    let desc = stderr.isEmpty ? "exit \(status)" : "exit \(status): \(stderr)"
-                    logger.error("Shell failed: \(desc, privacy: .public)")
-                    result = CommandResult(success: false, errorDescription: "shell \(desc)")
-                }
-            } catch {
-                logger.error("Shell launch failed: \(error.localizedDescription)")
-                result = CommandResult(success: false, errorDescription: "shell launch failed: \(error.localizedDescription)")
-            }
         }
-
-        await appendLog(command: command, actionName: actionName,
-                        result: result, shellCommand: shellCommand, logOnly: false)
-        return result
     }
 
     // MARK: - Execution Log
 
-    /// Human-readable name for an action, used in log entries.
-    nonisolated private static func actionName(_ action: CommandRequest.Action) -> String {
-        switch action {
-        case .newFile:      return "newFile"
-        case .openWithApp:  return "openWithApp"
-        case .copyPath:     return "copyPath"
-        case .copyFileName: return "copyFileName"
-        case .toggleHidden: return "toggleHidden"
-        case .shell:        return "shell"
-        }
-    }
-
     /// Append a single execution record on the main actor, trimming to the cap.
-    private func appendLog(
-        command: CommandRequest,
+    nonisolated private func appendLog(
         actionName: String,
+        files: [String],
         result: CommandResult,
         shellCommand: String?,
         logOnly: Bool
@@ -845,9 +946,9 @@ class AppState: ObservableObject {
             action: actionName,
             success: result.success,
             errorDescription: result.errorDescription,
-            files: command.files,
+            files: files,
             shellCommand: shellCommand,
-            extra: command.extra,
+            extra: nil,
             logOnly: logOnly
         )
         await MainActor.run { [weak self] in

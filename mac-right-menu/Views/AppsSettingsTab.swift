@@ -3,14 +3,14 @@ import UniformTypeIdentifiers
 
 struct AppsSettingsTab: View {
     @EnvironmentObject var appState: AppState
-    @State private var selection: String?   // AppMenuItem.id
+    @State private var selection: String?   // AppTarget.id (appURL.path)
 
     var body: some View {
         VStack(spacing: 12) {
             // MARK: - Section: Open With master switch
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text(String(localized: "Open With Apps"))
+                    Text("Open With Apps")
                         .fontWeight(.medium)
                     Spacer()
                     Toggle("", isOn: Binding(
@@ -20,22 +20,22 @@ struct AppsSettingsTab: View {
                     .toggleStyle(.switch)
                     .controlSize(.mini)
                 }
-                Text(String(localized: "Add applications to open files with from the right-click menu."))
+                Text("Add applications to open files with from the right-click menu.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.leading, 2)
             }
-            
+
             // MARK: Show App Icons toggle
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text(String(localized: "Show App Icons"))
+                    Text("Show App Icons")
                     Spacer()
-                    Toggle("", isOn: $appState.showAppIcons)
+                    Toggle("", isOn: $appState.appsShowAppIcons)
                         .toggleStyle(.switch)
                         .controlSize(.mini)
                 }
-                Text(String(localized: "Display the application icon next to each app in the right-click menu."))
+                Text("Display the application icon next to each app in the right-click menu. Note: showing app icons has a significant performance impact and may slow down menu opening.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.leading, 2)
@@ -57,7 +57,7 @@ struct AppsSettingsTab: View {
 
 
             // MARK: - List (fills remaining height)
-            if appState.appItems.isEmpty {
+            if appState.appRows.isEmpty {
                 Spacer()
                 ContentUnavailableView(
                     "No Apps Configured",
@@ -66,17 +66,17 @@ struct AppsSettingsTab: View {
                 )
                 Spacer()
             } else {
-                VStack(spacing: 4) {
+                VStack(spacing: 8) {
                     List(selection: $selection) {
-                        ForEach(appState.appItems) { item in
+                        ForEach(appState.appRows) { row in
                             HStack {
-                                Image(nsImage: item.icon)
+                                Image(nsImage: NSWorkspace.shared.icon(forFile: row.app.appURL.path))
                                     .resizable()
                                     .frame(width: 32, height: 32)
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text(item.displayName)
+                                    Text(row.app.displayName)
                                         .fontWeight(.medium)
-                                    Text(item.appURL.path)
+                                    Text(row.app.appURL.path)
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                         .lineLimit(1)
@@ -84,18 +84,13 @@ struct AppsSettingsTab: View {
                                 }
                                 Spacer()
                                 Toggle("", isOn: Binding(
-                                    get: { item.isEnabled },
-                                    set: { newValue in
-                                        if let index = appState.appItems.firstIndex(where: { $0.id == item.id }) {
-                                            appState.configuration.appItems[index].isEnabled = newValue
-                                            appState.saveConfiguration()
-                                        }
-                                    }
+                                    get: { row.isEnabled },
+                                    set: { newValue in appState.setAppEnabled(id: row.id, enabled: newValue) }
                                 )).toggleStyle(.switch)
                                     .controlSize(.mini)
                             }
                             .padding(.vertical, 2)
-                            .tag(item.id)
+                            .tag(row.id)
                         }
                         .onMove { source, dest in
                             appState.moveApp(from: source, to: dest)
@@ -115,7 +110,7 @@ struct AppsSettingsTab: View {
                 )
             }
 
-            if appState.appItems.isEmpty {
+            if appState.appRows.isEmpty {
                 Divider()
                 toolbar
             }
@@ -137,7 +132,7 @@ struct AppsSettingsTab: View {
 
             Button {
                 if let id = selection,
-                   let index = appState.appItems.firstIndex(where: { $0.id == id }) {
+                   let index = appState.appRows.firstIndex(where: { $0.id == id }) {
                     appState.removeApp(at: IndexSet(integer: index))
                     selection = nil
                 }
@@ -162,6 +157,6 @@ struct AppsSettingsTab: View {
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
         appState.addApp(url)
-        selection = url.path   // AppMenuItem.id == url.path
+        selection = url.path   // AppTarget.id == url.path
     }
 }

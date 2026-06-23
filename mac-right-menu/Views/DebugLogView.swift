@@ -246,8 +246,9 @@ private struct DebugLogRow: View {
     /// True when this row has detail worth expanding into. Rows without detail
     /// (heartbeats, plain lifecycle) render as a flat line and ignore clicks.
     private var hasDetail: Bool {
-        guard let d = entry.detail, !d.isEmpty else { return false }
-        return true
+        if let d = entry.detail, !d.isEmpty { return true }
+        if let p = entry.rawPayload, !p.isEmpty { return true }
+        return false
     }
 
     var body: some View {
@@ -303,17 +304,34 @@ private struct DebugLogRow: View {
             }
             .padding(.vertical, 3)
 
-            // Expanded detail: the full payload (file paths, command, error…).
-            // Indented under the header so the block reads as belonging to it.
-            // Monospaced + secondary so it's visually distinct from the summary.
-            if isExpanded, let detail = entry.detail, !detail.isEmpty {
-                Text(detail)
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.leading, 34)     // align under the summary text
+            // Expanded detail: raw JSON payload first (if present), then the
+            // human-readable detail text below. JSON is pretty-printed so it's
+            // readable at a glance; the raw string is preserved for copy/paste.
+            if isExpanded {
+                if let raw = entry.rawPayload, !raw.isEmpty {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("JSON")
+                            .font(.system(.caption2, design: .monospaced))
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.blue)
+                        Text(DebugLogRow.formatJSON(raw))
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.leading, 34)
                     .padding(.trailing, 8)
-                    .padding(.bottom, 4)
+                    .padding(.bottom, 2)
+                }
+                if let detail = entry.detail, !detail.isEmpty {
+                    Text(detail)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.leading, 34)
+                        .padding(.trailing, 8)
+                        .padding(.bottom, 4)
+                }
             }
         }
         // Apply selection at the row-container level: it propagates to every
@@ -361,4 +379,16 @@ private struct DebugLogRow: View {
     }
 
     private var badgeColor: Color { iconColor }
+
+    /// Try to pretty-print a raw JSON-RPC payload string. On success returns
+    /// indented JSON for readability; on parse failure returns the original raw
+    /// string as-is so the user still sees *something*.
+    static func formatJSON(_ raw: String) -> String {
+        guard let data = raw.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data),
+              let pretty = try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted, .sortedKeys]),
+              let result = String(data: pretty, encoding: .utf8)
+        else { return raw }
+        return result
+    }
 }

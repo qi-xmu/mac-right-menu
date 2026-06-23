@@ -9,7 +9,8 @@ private let logger = Logger(subsystem: Constants.currentBundleID, category: "rpc
 ///
 /// Replaces the XPC transport. The Container App runs an `RPCServer` listening
 /// on `Constants.rpcHost:Constants.rpcPort`; the FinderSync Extension uses
-/// `RPCClient` to invoke `executeCommand` on the Container.
+/// `RPCClient` to invoke `executeAction` on the Container and to receive
+/// `configDidChange` pushes of the menu tree.
 ///
 /// Messages are line-delimited JSON (one JSON-RPC object per `\n`).
 
@@ -19,13 +20,13 @@ struct RPCRequest: Codable {
     let jsonrpc: String
     let id: Int
     let method: String
-    let params: RPCParams?
+    let params: RPCActionParams?
     /// Out-of-band metadata for `ping` heartbeats (pid / version). Optional
     /// and ignored for other methods; defaults to nil so existing call sites
     /// and decoding of older peers stay backward compatible.
     let meta: [String: String]?
 
-    init(id: Int, method: String, params: RPCParams) {
+    init(id: Int, method: String, params: RPCActionParams) {
         self.jsonrpc = "2.0"
         self.id = id
         self.method = method
@@ -64,32 +65,36 @@ struct RPCResponse: Codable {
     }
 }
 
-/// Parameters for `executeCommand` — mirrors `CommandRequest` fields.
-struct RPCParams: Codable {
-    let action: Int
-    let files: [String]
-    let command: String?
-    let extra: [String: String]?
+/// Parameters for `executeAction` — mirrors `MenuAction` (an `actionID` plus
+/// the Finder selection context). `actionID` resolves to an `ActionDef` in the
+/// Container's `ActionDefMap`.
+struct RPCActionParams: Codable {
+    let actionID: Int
+    let targetURL: String?
+    let selectedURLs: [String]
 
-    init(_ req: CommandRequest) {
-        self.action = req.action.rawValue
-        self.files = req.files
-        self.command = req.command
-        self.extra = req.extra
+    init(_ action: MenuAction) {
+        self.actionID = action.actionID
+        self.targetURL = action.targetURL?.path
+        self.selectedURLs = action.selectedURLs.map(\.path)
     }
 
-    func toCommandRequest() -> CommandRequest {
-        let action = CommandRequest.Action(rawValue: action) ?? .shell
-        return CommandRequest(action: action, files: files, command: command, extra: extra)
+    func toMenuAction() -> MenuAction {
+        MenuAction(
+            actionID: actionID,
+            targetURL: targetURL.map { URL(fileURLWithPath: $0) },
+            selectedURLs: selectedURLs.map { URL(fileURLWithPath: $0) }
+        )
     }
 }
 
-/// Result of `executeCommand` — mirrors `CommandResult`.
-/// Also carries an optional `config` for `getConfig` responses.
+/// Result of `executeAction` — mirrors `CommandResult`. Also carries an
+/// optional `config` for `getConfig` responses (the menu tree pushed to the
+/// Extension).
 public struct RPCResult: Codable {
     public let success: Bool
     public let errorDescription: String?
-    public let config: MenuConfiguration?
+    public let config: MenuConfig?
 
     public init(_ res: CommandResult) {
         self.success = res.success
@@ -97,7 +102,7 @@ public struct RPCResult: Codable {
         self.config = nil
     }
 
-    public init(config: MenuConfiguration) {
+    public init(config: MenuConfig) {
         self.success = true
         self.errorDescription = nil
         self.config = config
@@ -107,15 +112,15 @@ public struct RPCResult: Codable {
 /// JSON-RPC notification (no `id`, no response expected).
 ///
 /// Used for server → client pushes such as `configDidChange`, which carries the
-/// full `MenuConfiguration` so the Extension can update its in-memory cache
-/// without relying on shared storage (each process keeps its own
+/// full `MenuConfig` (menu tree) so the Extension can update its in-memory
+/// cache without relying on shared storage (each process keeps its own
 /// `UserDefaults.standard`).
 struct RPCNotification: Codable {
     let jsonrpc: String
     let method: String
-    let params: MenuConfiguration
+    let params: MenuConfig
 
-    init(method: String, params: MenuConfiguration) {
+    init(method: String, params: MenuConfig) {
         self.jsonrpc = "2.0"
         self.method = method
         self.params = params
@@ -180,27 +185,45 @@ private func readLines(from connection: NWConnection,
 }
 
 private func sendJSON<T: Encodable>(_ value: T, on connection: NWConnection) {
-    do {
-        var data = try JSONEncoder().encode(value)
-        let payload = String(data: data, encoding: .utf8) ?? "<binary>"
-        logger.debug("[\(Constants.currentProcessRole, privacy: .public)][RPC SEND] \(payload, privacy: .public)")
-        data.append(0x0A) // newline delimiter
-        connection.send(content: data, completion: .contentProcessed { error in
-            if let error {
-                logger.error("RPCSession: send error: \(error.localizedDescription, privacy: .public)")
-            }
-        })
-    } catch {
-        logger.error("RPCSession: encode error: \(error.localizedDescription, privacy: .public)")
+    guard let payload = payloadJSON(value) else {
+        logger.error("RPCSession: encode error")
+        return
     }
+    logger.debug("[\(Constants.currentProcessRole, privacy: .public)][RPC SEND] \(payload, privacy: .public)")
+    guard let data = encodeWireJSON(value) else { return }
+    connection.send(content: data, completion: .contentProcessed { error in
+        if let error {
+            logger.error("RPCSession: send error: \(error.localizedDescription, privacy: .public)")
+        }
+    })
+}
+
+/// Encode a value for JSON-RPC wire transmission (compact JSON + \n).
+/// Returns the complete wire data ready for connection.send, or nil on failure.
+/// The same encoding is used for the raw-payload string stored in debug-log
+/// entries so the expanded payload always matches what was actually sent or
+/// received on the wire.
+private func encodeWireJSON<T: Encodable>(_ value: T) -> Data? {
+    guard let payload = payloadJSON(value) else { return nil }
+    var data = payload.data(using: .utf8) ?? Data()
+    data.append(0x0A)
+    return data
+}
+
+/// Serialise a value to compact JSON (no newline), matching the wire format
+/// used for RPC messages. Returns nil on encode failure so callers can skip
+/// the raw-payload field rather than storing an error string.
+private func payloadJSON<T: Encodable>(_ value: T) -> String? {
+    guard let data = try? JSONEncoder().encode(value) else { return nil }
+    return String(data: data, encoding: .utf8)
 }
 
 // MARK: - Server (Container side)
 
 public final class RPCServer: @unchecked Sendable {
     private var listener: NWListener?
-    private let onCommand: @Sendable (CommandRequest) async -> (CommandResult)
-    private let getConfig: @MainActor @Sendable () -> MenuConfiguration
+    private let onAction: @Sendable (MenuAction) async -> (CommandResult)
+    private let getConfig: @MainActor @Sendable () -> MenuConfig
     private let onHeartbeat: @MainActor @Sendable ([String: String]?) -> Void
     private let onDisconnected: @MainActor @Sendable () -> Void
     /// Reports every RPC/wake/connection event the Container observes, for the
@@ -213,13 +236,13 @@ public final class RPCServer: @unchecked Sendable {
     private var pingTimer: DispatchSourceTimer?
 
     public init(
-        onCommand: @escaping @Sendable (CommandRequest) async -> (CommandResult),
-        getConfig: @escaping @MainActor @Sendable () -> MenuConfiguration,
+        onAction: @escaping @Sendable (MenuAction) async -> (CommandResult),
+        getConfig: @escaping @MainActor @Sendable () -> MenuConfig,
         onHeartbeat: @escaping @MainActor @Sendable ([String: String]?) -> Void,
         onDisconnected: @escaping @MainActor @Sendable () -> Void = {},
         onActivity: @escaping @Sendable (RPCActivity) -> Void = { _ in }
     ) {
-        self.onCommand = onCommand
+        self.onAction = onAction
         self.getConfig = getConfig
         self.onHeartbeat = onHeartbeat
         self.onDisconnected = onDisconnected
@@ -316,11 +339,11 @@ public final class RPCServer: @unchecked Sendable {
         lock.unlock()
     }
 
-    /// Push a `configDidChange` notification carrying the full configuration
-    /// to every connected Extension. Because each process keeps its own
+    /// Push a `configDidChange` notification carrying the menu tree to every
+    /// connected Extension. Because each process keeps its own
     /// `UserDefaults.standard`, the config payload must travel in-band so the
     /// Extension can refresh its in-memory cache without shared storage.
-    public func broadcastConfig(_ config: MenuConfiguration) {
+    public func broadcastConfig(_ config: MenuConfig) {
         let note = RPCNotification(method: "configDidChange", params: config)
         lock.lock()
         let snapshot = activeConnections
@@ -333,11 +356,13 @@ public final class RPCServer: @unchecked Sendable {
             return
         }
         logger.notice("[Con] RPCServer: broadcast configDidChange to \(snapshot.count) connection(s)")
+        let rawPayload = payloadJSON(note)
         snapshot.forEach { sendJSON(note, on: $0) }
         onActivity(RPCActivity(
             kind: .rpc, direction: .send, method: "configDidChange",
             summary: "configDidChange → \(snapshot.count) conn(s)",
-            detail: "apps=\(note.params.appItems.count) actions=\(note.params.actionItems.count) templates=\(note.params.newFileTemplates.count) enabled=\(note.params.isEnabled)"
+            detail: "topMenus=\(note.params.menus.count) enabled=\(note.params.isEnabled) showIcons=\(note.params.showAppIcons)",
+            rawPayload: rawPayload
         ))
     }
 
@@ -350,8 +375,9 @@ public final class RPCServer: @unchecked Sendable {
         lock.unlock()
         guard !snapshot.isEmpty else { return }
         logger.notice("[Con] RPCServer: broadcast shutdown to \(snapshot.count) connection(s)")
+        let rawPayload = payloadJSON(note)
         snapshot.forEach { sendJSON(note, on: $0) }
-        onActivity(RPCActivity(kind: .rpc, direction: .send, method: "shutdown", summary: "shutdown → \(snapshot.count) conn(s)"))
+        onActivity(RPCActivity(kind: .rpc, direction: .send, method: "shutdown", summary: "shutdown → \(snapshot.count) conn(s)", rawPayload: rawPayload))
     }
 
     private func handle(_ connection: NWConnection) {
@@ -413,7 +439,7 @@ public final class RPCServer: @unchecked Sendable {
         }
         logger.notice("[Con] RPCServer: dispatch \(req.method, privacy: .public) id=\(req.id)")
         let (summary, detail) = recvSummary(for: req)
-        onActivity(RPCActivity(kind: .rpc, direction: .recv, method: req.method, rpcID: req.id, summary: summary, detail: detail))
+        onActivity(RPCActivity(kind: .rpc, direction: .recv, method: req.method, rpcID: req.id, summary: summary, detail: detail, rawPayload: payload))
         switch req.method {
         case "hello":
             // One-shot identity handshake from the Extension (sent right after
@@ -436,7 +462,8 @@ public final class RPCServer: @unchecked Sendable {
                 guard isKnownExtension else {
                     logger.warning("[Con] RPCServer: rejected hello — PID \(pid) is not a registered Extension (bundleID=\(Constants.extensionBundleID))")
                     onActivity(RPCActivity(kind: .rpc, direction: .recv, method: "hello", rpcID: req.id,
-                                           summary: "hello rejected — PID \(pid) not a registered Extension"))
+                                           summary: "hello rejected — PID \(pid) not a registered Extension",
+                                           rawPayload: payload))
                     connection.cancel()
                     return
                 }
@@ -445,41 +472,51 @@ public final class RPCServer: @unchecked Sendable {
             recordPong(connection)
             let resp = RPCResponse(jsonrpc: "2.0", id: req.id,
                                    result: RPCResult(CommandResult(success: true)), error: nil)
+            let respPayload = payloadJSON(resp)
             sendJSON(resp, on: connection)
-            onActivity(RPCActivity(kind: .rpc, direction: .send, method: "response", rpcID: req.id, summary: "hello ack", detail: "  pid=\(meta["pid"] ?? "?") version=\(meta["version"] ?? "?")"))
+            onActivity(RPCActivity(kind: .rpc, direction: .send, method: "response", rpcID: req.id, summary: "hello ack", detail: "  pid=\(meta["pid"] ?? "?") version=\(meta["version"] ?? "?")", rawPayload: respPayload))
         case "getConfig":
-            // Hand the full current config back to the Extension. Runs on the
-            // main actor since AppState.configuration lives there.
+            // Hand the current menu tree back to the Extension. Runs on the
+            // main actor since AppState's config lives there.
             Task {
                 let config = await getConfig()
                 let resp = RPCResponse(jsonrpc: "2.0", id: req.id,
                                        result: RPCResult(config: config), error: nil)
+                let respPayload = payloadJSON(resp)
                 sendJSON(resp, on: connection)
                 onActivity(RPCActivity(
                     kind: .rpc, direction: .send, method: "response", rpcID: req.id,
                     summary: "getConfig response",
-                    detail: "apps=\(config.appItems.count) actions=\(config.actionItems.count) templates=\(config.newFileTemplates.count) enabled=\(config.isEnabled)"
+                    detail: "topMenus=\(config.menus.count) enabled=\(config.isEnabled) showIcons=\(config.showAppIcons)",
+                    rawPayload: respPayload
                 ))
             }
-        default: // "executeCommand"
+        case "executeAction":
             guard let params = req.params else {
-                logger.error("RPCServer: executeCommand missing params id=\(req.id)")
+                logger.error("RPCServer: executeAction missing params id=\(req.id)")
                 return
             }
-            let command = params.toCommandRequest()
+            let action = params.toMenuAction()
             // Execute on a background task; the response is sent once execution
             // completes. JSON-RPC framing supports this deferred response.
             Task {
-                let result = await onCommand(command)
+                let result = await onAction(action)
                 let resp = RPCResponse(jsonrpc: "2.0", id: req.id, result: RPCResult(result), error: nil)
+                let respPayload = payloadJSON(resp)
                 sendJSON(resp, on: connection)
                 let ok = result.success ? "ok" : "fail"
                 onActivity(RPCActivity(
                     kind: .rpc, direction: .send, method: "response", rpcID: req.id,
-                    summary: "executeCommand response (\(ok))",
-                    detail: result.errorDescription.map { "error: \($0)" }
+                    summary: "executeAction response (\(ok))",
+                    detail: result.errorDescription.map { "error: \($0)" },
+                    rawPayload: respPayload
                 ))
             }
+        default:
+            logger.warning("[Con] RPCServer: unknown method '\(req.method, privacy: .public)' id=\(req.id)")
+            let resp = RPCResponse(jsonrpc: "2.0", id: req.id, result: nil,
+                                   error: RPCResponse.RPCError(code: -32601, message: "Method not found: \(req.method)"))
+            sendJSON(resp, on: connection)
         }
     }
 
@@ -489,33 +526,20 @@ public final class RPCServer: @unchecked Sendable {
     /// on expand / hover / export without flooding the compact view.
     private func recvSummary(for req: RPCRequest) -> (summary: String, detail: String?) {
         switch req.method {
-        case "executeCommand":
-            guard let p = req.params else { return ("executeCommand (no params)", nil) }
-            // Map the numeric action to a readable name so the log row says
-            // "action=shell" instead of "action=2".
-            let actionName: String
-            switch p.action {
-            case 0: actionName = "shell"
-            case 1: actionName = "openWithApp"
-            case 2: actionName = "newFile"
-            case 3: actionName = "copyPath"
-            case 4: actionName = "copyFileName"
-            case 5: actionName = "toggleHidden"
-            default: actionName = "unknown(\(p.action))"
-            }
-            let summary = "action=\(actionName) files=\(p.files.count)"
-            // Detail: list every file path (not just the count) + the command
-            // string if present. These are the values that actually matter when
-            // debugging "why did this command fail / open the wrong app".
-            var lines = p.files.enumerated().map { idx, path in
+        case "executeAction":
+            guard let p = req.params else { return ("executeAction (no params)", nil) }
+            // Map the actionID to a readable name via its range so the log row
+            // says "action=openWith" instead of "id=1000".
+            let actionName = Self.actionName(for: p.actionID)
+            let summary = "action=\(actionName) id=\(p.actionID) files=\(p.selectedURLs.count)"
+            // Detail: list every selected path (not just the count) + the
+            // target URL. These are the values that matter when debugging "why
+            // did this action fail / open the wrong app".
+            var lines = p.selectedURLs.enumerated().map { idx, path in
                 "  [\(idx)] \(path)"
             }
-            if let cmd = p.command, !cmd.isEmpty {
-                lines.append("  command: \(cmd)")
-            }
-            if let extra = p.extra, !extra.isEmpty {
-                let kv = extra.map { "\($0)=\($1)" }.joined(separator: ", ")
-                lines.append("  extra: \(kv)")
+            if let target = p.targetURL {
+                lines.append("  target: \(target)")
             }
             return (summary, lines.joined(separator: "\n"))
         case "hello":
@@ -531,6 +555,24 @@ public final class RPCServer: @unchecked Sendable {
             return (req.method, nil)
         }
     }
+
+    /// Human-readable name for an `actionID`, based on its range
+    /// (see `Constants.TagBase`). Used for Debug Log rows.
+    private static func actionName(for actionID: Int) -> String {
+        let nf = Constants.TagBase.newFile.rawValue
+        let app = Constants.TagBase.appItem.rawValue
+        let op = Constants.TagBase.copyPath.rawValue
+        let shell = Constants.TagBase.shell.rawValue
+        switch actionID {
+        case Constants.TagBase.copyPath.rawValue:     return "copyPath"
+        case Constants.TagBase.copyFileName.rawValue: return "copyFileName"
+        case Constants.TagBase.toggleHidden.rawValue: return "toggleHidden"
+        case nf..<app:        return "newFile"     // 0 + templateIndex
+        case app..<op:        return "openWith"    // 1000 + appIndex
+        case shell..<(shell + 1000): return "shell" // 4000 + shellIndex
+        default:              return "unknown(\(actionID))"
+        }
+    }
 }
 
 // MARK: - Client (Extension side)
@@ -541,7 +583,7 @@ public final class RPCClient: @unchecked Sendable {
     private var nextID: Int = 1
     private var pending: [Int: (RPCResult?) -> Void] = [:]
     private var retryWork: DispatchWorkItem?
-    private var onConfigChange: (@Sendable (MenuConfiguration) -> Void)?
+    private var onConfigChange: (@Sendable (MenuConfig) -> Void)?
     private var onShutdown: (@Sendable () -> Void)?
 
     // Heartbeat direction is Con→Ext only: the Container pings every
@@ -595,7 +637,7 @@ public final class RPCClient: @unchecked Sendable {
     /// Register a handler invoked when the Container pushes `configDidChange`,
     /// and also right after the initial `getConfig` pull on connect. Called on
     /// an arbitrary background queue.
-    public func setConfigChangeHandler(_ handler: @escaping @Sendable (MenuConfiguration) -> Void) {
+    public func setConfigChangeHandler(_ handler: @escaping @Sendable (MenuConfig) -> Void) {
         lock.lock()
         onConfigChange = handler
         lock.unlock()
@@ -677,15 +719,17 @@ public final class RPCClient: @unchecked Sendable {
         lock.unlock()
     }
 
-    /// Invoke `executeCommand` on the Container. Completion is called on an
-    /// arbitrary queue; returns false if no connection is available.
+    /// Invoke `executeAction` on the Container, forwarding the clicked menu
+    /// item's `actionID` plus the current Finder selection context. Completion
+    /// is called on an arbitrary queue; returns false if no connection is
+    /// available.
     @discardableResult
-    public func executeCommand(_ command: CommandRequest,
-                                completion: @escaping (RPCResult?) -> Void) -> Bool {
+    public func executeAction(_ action: MenuAction,
+                              completion: @escaping (RPCResult?) -> Void) -> Bool {
         lock.lock()
         guard let conn = connection else {
             lock.unlock()
-            logger.warning("RPCClient: not connected — command dropped")
+            logger.warning("RPCClient: not connected — action dropped")
             completion(nil)
             return false
         }
@@ -694,8 +738,8 @@ public final class RPCClient: @unchecked Sendable {
         pending[id] = completion
         lock.unlock()
 
-        let req = RPCRequest(id: id, method: "executeCommand", params: RPCParams(command))
-        logger.notice("[Ext][RPC CALL] id=\(id) action=\(command.action.rawValue) files=\(command.files, privacy: .public)")
+        let req = RPCRequest(id: id, method: "executeAction", params: RPCActionParams(action))
+        logger.notice("[Ext][RPC CALL] id=\(id) actionID=\(action.actionID) selected=\(action.selectedURLs.map(\.path), privacy: .public)")
         sendJSON(req, on: conn)
         return true
     }

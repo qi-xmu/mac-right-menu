@@ -17,7 +17,7 @@ from typing import Any
 # ---------------------------------------------------------------------------
 
 def build_response(rid: int, success: bool, error_desc: str | None = None) -> dict[str, Any]:
-    """Build an RPCResponse for a command result (ping, executeCommand)."""
+    """Build an RPCResponse for a command result (ping, executeAction)."""
     return {
         "jsonrpc": "2.0",
         "id": rid,
@@ -30,7 +30,12 @@ def build_response(rid: int, success: bool, error_desc: str | None = None) -> di
 
 
 def build_config_response(rid: int, config: dict[str, Any]) -> dict[str, Any]:
-    """Build an RPCResponse that carries the full MenuConfiguration (for getConfig)."""
+    """Build an RPCResponse that carries the full MenuConfig (for getConfig).
+
+    `config` is the `MenuConfig` tree (`{isEnabled, showAppIcons, menus: [MenuItem]}`)
+    that the Extension renders. The execution half (`ActionDefMap`) lives only in
+    the Container and is never sent over the wire.
+    """
     return {
         "jsonrpc": "2.0",
         "id": rid,
@@ -79,7 +84,7 @@ def dispatch_message(
             return build_response(rid, success=True)
         elif method == "getConfig":
             return build_config_response(rid, config)
-        elif method == "executeCommand":
+        elif method == "executeAction":
             # Details are logged by the caller; here we just return success
             return build_response(rid, success=True)
         else:
@@ -89,21 +94,28 @@ def dispatch_message(
     return None
 
 
-def action_name(action: int) -> str:
-    """Map CommandRequest.Action rawValue → human-readable name.
+def action_name(action_id: int) -> str:
+    """Map an actionID → human-readable name, by range.
 
-    Values match CommandRequest.Action enum in Shared/Models/CommandRequest.swift:
-    0=newFile, 1=openWithApp, 2=copyPath, 3=copyFileName, 4=toggleHidden, 6=shell.
+    Matches the actionID space defined in `Constants.TagBase`
+    (Shared/Constants.swift) and the mirror logic in
+    `RPCSession.RPCServer.actionName(for:)`:
+      0–999    newFile    (0 + templateIndex)
+      1000–1999 openWith   (1000 + appIndex)
+      2000     copyPath
+      2001     copyFileName
+      2002     toggleHidden
+      4000–4999 shell      (4000 + shellIndex, reserved)
     """
-    names = {
-        0: "newFile",
-        1: "openWithApp",
-        2: "copyPath",
-        3: "copyFileName",
-        4: "toggleHidden",
-        6: "shell",
-    }
-    return names.get(action, f"unknown({action})")
+    if action_id in (2000, 2001, 2002):
+        return {2000: "copyPath", 2001: "copyFileName", 2002: "toggleHidden"}[action_id]
+    if 0 <= action_id < 1000:
+        return "newFile"
+    if 1000 <= action_id < 2000:
+        return "openWith"
+    if 4000 <= action_id < 5000:
+        return "shell"
+    return f"unknown({action_id})"
 
 
 # ---------------------------------------------------------------------------
@@ -148,7 +160,6 @@ def decode_messages(buf: bytes) -> tuple[list[dict[str, Any]], bytes]:
 # ---------------------------------------------------------------------------
 
 import asyncio
-import sys
 from pathlib import Path
 
 import typer
@@ -168,16 +179,15 @@ _conn_counter = 0
 
 
 def load_config(path: Path) -> dict[str, Any]:
-    """Load MenuConfiguration from a JSON file.
+    """Load a MenuConfig from a JSON file.
 
     Returns a minimal fallback config if the file is missing or invalid.
     """
+    # A minimal but valid MenuConfig (empty menu tree).
     fallback: dict[str, Any] = {
         "isEnabled": True,
-        "appItems": [],
-        "actionItems": [],
-        "newFileTemplates": [],
-        "appsSectionEnabled": True,
+        "showAppIcons": True,
+        "menus": [],
     }
     if not path.exists():
         console.print(f"[yellow]⚠ Config file not found: {path}, using fallback[/]")
@@ -257,18 +267,20 @@ def _log_inbound(msg: dict[str, Any], verbose: bool) -> None:
 
     parts: list[str] = [f"[yellow]→ RECV[/] [bold]{method}[/]  id={rid}"]
 
-    if method == "ping" and meta:
+    if method == "hello" and meta:
         parts.append(f"pid={meta.get('pid','?')} v={meta.get('version','?')}")
-    elif method == "executeCommand":
+    elif method == "executeAction":
         params = msg.get("params", {})
-        action = params.get("action", "?")
-        files = params.get("files", [])
-        cmd = params.get("command")
-        parts.append(f"action=[bold]{action_name(action)}[/]")
+        action_id = params.get("actionID", "?")
+        target = params.get("targetURL")
+        files = params.get("selectedURLs", [])
+        name = action_name(action_id) if isinstance(action_id, int) else action_id
+        parts.append(f"action=[bold]{name}[/]")
+        parts.append(f"id={action_id}")
         if files:
             parts.append(f"files={files}")
-        if cmd:
-            parts.append(f'cmd="{cmd}"')
+        if target:
+            parts.append(f"target={target}")
     elif method == "getConfig":
         pass  # nothing extra to show
 
@@ -299,11 +311,23 @@ def _log_outbound(reply: dict[str, Any], verbose: bool) -> None:
 
 
 def _count_config_items(config: dict[str, Any]) -> str:
-    """Human-readable count of config items for log output."""
-    apps = len(config.get("appItems", []))
-    actions = len(config.get("actionItems", []))
-    templates = len(config.get("newFileTemplates", []))
-    return f"{apps}a/{actions}c/{templates}t"
+    """Human-readable count of menu items for log output.
+
+    The new MenuConfig is a recursive `menus` tree; we summarize the top-level
+    sections and total leaves so the log row stays compact.
+    """
+    menus = config.get("menus", []) if isinstance(config, dict) else []
+    sections = len(menus)
+    leaves = sum(_count_leaves(m) for m in menus)
+    return f"{sections}s/{leaves}l"
+
+
+def _count_leaves(node: dict[str, Any]) -> int:
+    """Count leaf nodes under a MenuItem (a node with empty subMenus)."""
+    subs = node.get("subMenus", []) if isinstance(node, dict) else []
+    if not subs:
+        return 1
+    return sum(_count_leaves(s) for s in subs)
 
 
 async def run_server(port: int, config_path: Path, verbose: bool) -> None:
@@ -350,14 +374,14 @@ def main(
     config: Path = typer.Option(
         Path("tests/rpc-debug/debug-config.json"),
         exists=False,
-        help="Path to MenuConfiguration JSON file",
+        help="Path to MenuConfig JSON file",
     ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show full JSON payloads"),
 ) -> None:
     """Start the RPC debug server for Finder Extension testing.
 
     Listens on 127.0.0.1:{port} and replies to JSON-RPC requests
-    (ping, getConfig, executeCommand) with default-success responses.
+    (ping, getConfig, executeAction) with default-success responses.
     """
     try:
         asyncio.run(run_server(port, config, verbose))

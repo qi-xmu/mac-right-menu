@@ -7,50 +7,50 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0053DA76BCC62F3B21183ACE /* MenuConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FABE9BF0AD03A573DB2C6DF /* MenuConfig.swift */; };
+		0AE957FF3E346F10B10DB94D /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00AF79042FD48FEA0DD8AD91 /* AppConfig.swift */; };
 		0B5469E7DCE4B1A94C499A4B /* RPCSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAB1987AF34FFE7FA5943EF5 /* RPCSession.swift */; };
 		1FA1B55404E5A8A4B8F5B0DF /* ExecutionLogEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E11FAF32F404EE1051398B4 /* ExecutionLogEntry.swift */; };
+		1FE6196F4DB6FC244CA584CF /* MenuConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FABE9BF0AD03A573DB2C6DF /* MenuConfig.swift */; };
 		3237E76B10AD05A83D9874CC /* ActionsSettingsTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79D69EBC70AADF2563A596E3 /* ActionsSettingsTab.swift */; };
 		3588A946E437161A77DB85CB /* mac_right_menuApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6763067652997C56891A197 /* mac_right_menuApp.swift */; };
-		3CADA174838B7825E0322020 /* ActionMenuItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE62B2AEB26ABD533E6BE6F5 /* ActionMenuItem.swift */; };
+		3C76DB65B0292632DDE2C959 /* MenuAction.swift in Sources */ = {isa = PBXBuildFile; fileRef = F70C9B6C60DD0872D9CF0C9E /* MenuAction.swift */; };
 		42AC784A6E8DB45CD1D43963 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = FF59226764AF1CFFDC561239 /* Localizable.xcstrings */; };
-		46B5433DBA9B24B6803842E1 /* CommandRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86A57D93B91AC0A3A6F79288 /* CommandRequest.swift */; };
 		4ACC97BF92B731BA6579BA34 /* SharedUserDefaults.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40CE98C6FE58A80ADB8B26C5 /* SharedUserDefaults.swift */; };
 		4D7AC92E0205772785D0EE29 /* NewFileTemplate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9C495B11F638A04B8E3EFED /* NewFileTemplate.swift */; };
-		4D88EAF0DF9B98B2F7F40359 /* MenuConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2BF9DC882C191AA9A66BC1F /* MenuConfiguration.swift */; };
-		509C2E4BA5E686B51EA11748 /* ActionMenuItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE62B2AEB26ABD533E6BE6F5 /* ActionMenuItem.swift */; };
-		516920CA93096E07838CA285 /* AppMenuItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A61B788DDF2E3EAD81F4133 /* AppMenuItem.swift */; };
 		55237B827DC42929BB534AB9 /* Constants.swift in Sources */ = {isa = PBXBuildFile; fileRef = 108A6DB428B7D682BFE80908 /* Constants.swift */; };
-		5ABA55F5E5C6D48D34B07F2A /* CommandRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86A57D93B91AC0A3A6F79288 /* CommandRequest.swift */; };
 		5D47F2440E7DD71644A9E934 /* SharedUserDefaults.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40CE98C6FE58A80ADB8B26C5 /* SharedUserDefaults.swift */; };
 		690F2CB0C5DE1FE0E93C652B /* CommandResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = 334B0F3539617B5A5ED3CB61 /* CommandResult.swift */; };
 		6A9D31D9532EE14579A10D1C /* NewFileSettingsTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59CA55100CF81240021634FC /* NewFileSettingsTab.swift */; };
 		6B8B9AB7DA9F01452C2B4783 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = FF59226764AF1CFFDC561239 /* Localizable.xcstrings */; };
+		6C88CB96F5370E2F914C077D /* FullDiskAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = C09AC2EA078A73461EC5A868 /* FullDiskAccess.swift */; };
+		6F2342ADFF8E258060B0A06A /* ActionDef.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC5E0C5BC15FEDDB7E0F61DB /* ActionDef.swift */; };
 		81CD2A90DE36ED42D78C7B69 /* ExtensionInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 117CD93D5335254BE2E4C974 /* ExtensionInfo.swift */; };
 		8274032C4E1DC02B573863A4 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDA173AFFD620244655EA215 /* AppState.swift */; };
 		82ACB851B2BC1CF189915121 /* NewFileTemplate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9C495B11F638A04B8E3EFED /* NewFileTemplate.swift */; };
+		8C1DCB744046C5CD60F45EC3 /* DebugLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8272629D92AF6D8436E3012 /* DebugLogView.swift */; };
 		8DC27AE99A295224B0F2F696 /* ExtensionsSettingsTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88D0558AB5CF20918710586D /* ExtensionsSettingsTab.swift */; };
-		9803AC52979C551481947554 /* AppMenuItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A61B788DDF2E3EAD81F4133 /* AppMenuItem.swift */; };
+		9792452408C1BFAA42FF8E22 /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00AF79042FD48FEA0DD8AD91 /* AppConfig.swift */; };
 		9C07ABF04254FBD3155727FB /* FinderSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD39CB04B25FC831003DBF3A /* FinderSync.swift */; };
-		A0C6F748EC529DDF15F851D1 /* MenuActionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CBECB73A36E2983BD394B54 /* MenuActionHandler.swift */; };
+		A33968B91D5995BFAD53A152 /* DebugLogEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 760406FE333A1D4F5AEC2E22 /* DebugLogEntry.swift */; };
 		A3AB653447DEB32878DDA243 /* RPCSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAB1987AF34FFE7FA5943EF5 /* RPCSession.swift */; };
 		A5053B099A0485A28783A82A /* CommandResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = 334B0F3539617B5A5ED3CB61 /* CommandResult.swift */; };
 		A90ABA38D57C95A8880B6118 /* GeneralSettingsTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = B046667D4B2820EA5E428CDD /* GeneralSettingsTab.swift */; };
-		A9D4693E26AF534902A7EC95 /* MenuItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69E67F8AC8310E0732AFDB94 /* MenuItem.swift */; };
+		AD263304DC153A8379EB56A1 /* AppTarget.swift in Sources */ = {isa = PBXBuildFile; fileRef = F47956DC7E90B6D3D32B6F45 /* AppTarget.swift */; };
 		ADAFC6CA85BEB78250DC40F3 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7CFB1776D4B9F302D8A8CC2 /* SettingsView.swift */; };
 		BAEBD582B5740CFC30BC6A90 /* Constants.swift in Sources */ = {isa = PBXBuildFile; fileRef = 108A6DB428B7D682BFE80908 /* Constants.swift */; };
-		C4BD5057D366864129111BA3 /* MenuConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2BF9DC882C191AA9A66BC1F /* MenuConfiguration.swift */; };
+		BFA59044C772DC1DD663CCAF /* AppTarget.swift in Sources */ = {isa = PBXBuildFile; fileRef = F47956DC7E90B6D3D32B6F45 /* AppTarget.swift */; };
 		C65D9AE703AC530C70DBC4D2 /* FinderSync.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0B36F6B6DC5A4AAB90168799 /* FinderSync.framework */; };
 		C70DB4DF15626EF8462DEA74 /* ExtensionInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 117CD93D5335254BE2E4C974 /* ExtensionInfo.swift */; };
 		CA91B5C0EEBB92FAB08B26EC /* AppsSettingsTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0D9421302623A30C0699F81 /* AppsSettingsTab.swift */; };
 		CC1B9D616EDE28553F3FE470 /* ExecutionLogEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E11FAF32F404EE1051398B4 /* ExecutionLogEntry.swift */; };
-		E945BC42E525987797674D68 /* MenuItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69E67F8AC8310E0732AFDB94 /* MenuItem.swift */; };
+		D1E228AA903D17943BCF1688 /* FullDiskAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = C09AC2EA078A73461EC5A868 /* FullDiskAccess.swift */; };
+		E702E217086B98672BD6A029 /* DebugLogEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 760406FE333A1D4F5AEC2E22 /* DebugLogEntry.swift */; };
+		F1D46E556CCDE704D23E6A92 /* MenuAction.swift in Sources */ = {isa = PBXBuildFile; fileRef = F70C9B6C60DD0872D9CF0C9E /* MenuAction.swift */; };
 		F808D8A0162B38B342851688 /* MenuBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA6A993709DD16B536FE0476 /* MenuBuilder.swift */; };
 		FD1B04F0D0770884AC89519F /* FinderExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 626C40FAC2601D59DC49C42E /* FinderExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		FD33F2EA80667D971C6B361C /* ExecutionLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 982C57228CB76B4D291F9C5D /* ExecutionLogView.swift */; };
-		DBB1C2D3E4F5061728394A6B /* DebugLogEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB9A1C2D3E4F5061728394A5 /* DebugLogEntry.swift */; };
-		DBB1C2D3E4F5061728394A7C /* DebugLogEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB9A1C2D3E4F5061728394A5 /* DebugLogEntry.swift */; };
-		DBB1C2D3E4F5061728394A9E /* DebugLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB9A1C2D3E4F5061728394A8D /* DebugLogView.swift */; };
-		FDA1B2C3D4E5F60718293A4C /* FullDiskAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDA1B2C3D4E5F60718293A4B /* FullDiskAccess.swift */; };
+		FE94FD09EFAA169AB2EC4322 /* ActionDef.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC5E0C5BC15FEDDB7E0F61DB /* ActionDef.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -78,42 +78,41 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		00AF79042FD48FEA0DD8AD91 /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
 		09C454FE740FD78676D15D53 /* Local.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Local.xcconfig; sourceTree = "<group>"; };
 		0B36F6B6DC5A4AAB90168799 /* FinderSync.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = FinderSync.framework; sourceTree = "<group>"; };
-		0CBECB73A36E2983BD394B54 /* MenuActionHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuActionHandler.swift; sourceTree = "<group>"; };
 		108A6DB428B7D682BFE80908 /* Constants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Constants.swift; sourceTree = "<group>"; };
 		117CD93D5335254BE2E4C974 /* ExtensionInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionInfo.swift; sourceTree = "<group>"; };
 		1E11FAF32F404EE1051398B4 /* ExecutionLogEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExecutionLogEntry.swift; sourceTree = "<group>"; };
 		255056C34CEA98661DC8EE7A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		2FABE9BF0AD03A573DB2C6DF /* MenuConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuConfig.swift; sourceTree = "<group>"; };
 		334B0F3539617B5A5ED3CB61 /* CommandResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandResult.swift; sourceTree = "<group>"; };
 		3F3C1D1332A39A4FB6880E99 /* mac-right-menu.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "mac-right-menu.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		40CE98C6FE58A80ADB8B26C5 /* SharedUserDefaults.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedUserDefaults.swift; sourceTree = "<group>"; };
 		568C283306D87E86AA48AA17 /* mac-right-menu.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "mac-right-menu.entitlements"; sourceTree = "<group>"; };
 		59CA55100CF81240021634FC /* NewFileSettingsTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewFileSettingsTab.swift; sourceTree = "<group>"; };
 		626C40FAC2601D59DC49C42E /* FinderExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FinderExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		69E67F8AC8310E0732AFDB94 /* MenuItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuItem.swift; sourceTree = "<group>"; };
-		6A61B788DDF2E3EAD81F4133 /* AppMenuItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMenuItem.swift; sourceTree = "<group>"; };
+		760406FE333A1D4F5AEC2E22 /* DebugLogEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLogEntry.swift; sourceTree = "<group>"; };
 		79D69EBC70AADF2563A596E3 /* ActionsSettingsTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionsSettingsTab.swift; sourceTree = "<group>"; };
-		86A57D93B91AC0A3A6F79288 /* CommandRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandRequest.swift; sourceTree = "<group>"; };
 		88D0558AB5CF20918710586D /* ExtensionsSettingsTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionsSettingsTab.swift; sourceTree = "<group>"; };
 		982C57228CB76B4D291F9C5D /* ExecutionLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExecutionLogView.swift; sourceTree = "<group>"; };
-		DB9A1C2D3E4F5061728394A8D /* DebugLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLogView.swift; sourceTree = "<group>"; };
-		DB9A1C2D3E4F5061728394A5 /* DebugLogEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLogEntry.swift; sourceTree = "<group>"; };
 		A3C2B33C43F556A0F45272B7 /* FinderExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FinderExtension.entitlements; sourceTree = "<group>"; };
 		A7CFB1776D4B9F302D8A8CC2 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		AAB1987AF34FFE7FA5943EF5 /* RPCSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RPCSession.swift; sourceTree = "<group>"; };
-		AE62B2AEB26ABD533E6BE6F5 /* ActionMenuItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionMenuItem.swift; sourceTree = "<group>"; };
 		B046667D4B2820EA5E428CDD /* GeneralSettingsTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneralSettingsTab.swift; sourceTree = "<group>"; };
 		B0D9421302623A30C0699F81 /* AppsSettingsTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppsSettingsTab.swift; sourceTree = "<group>"; };
-		B2BF9DC882C191AA9A66BC1F /* MenuConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuConfiguration.swift; sourceTree = "<group>"; };
 		B9C495B11F638A04B8E3EFED /* NewFileTemplate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewFileTemplate.swift; sourceTree = "<group>"; };
 		BA6A993709DD16B536FE0476 /* MenuBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBuilder.swift; sourceTree = "<group>"; };
+		C09AC2EA078A73461EC5A868 /* FullDiskAccess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FullDiskAccess.swift; sourceTree = "<group>"; };
 		C6CCD9C4A224EC909758C496 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		D6763067652997C56891A197 /* mac_right_menuApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = mac_right_menuApp.swift; sourceTree = "<group>"; };
 		DD39CB04B25FC831003DBF3A /* FinderSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderSync.swift; sourceTree = "<group>"; };
+		F47956DC7E90B6D3D32B6F45 /* AppTarget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTarget.swift; sourceTree = "<group>"; };
+		F70C9B6C60DD0872D9CF0C9E /* MenuAction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuAction.swift; sourceTree = "<group>"; };
+		F8272629D92AF6D8436E3012 /* DebugLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLogView.swift; sourceTree = "<group>"; };
+		FC5E0C5BC15FEDDB7E0F61DB /* ActionDef.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionDef.swift; sourceTree = "<group>"; };
 		FDA173AFFD620244655EA215 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		FF59226764AF1CFFDC561239 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
-		FDA1B2C3D4E5F60718293A4B /* FullDiskAccess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FullDiskAccess.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -154,8 +153,8 @@
 			children = (
 				79D69EBC70AADF2563A596E3 /* ActionsSettingsTab.swift */,
 				B0D9421302623A30C0699F81 /* AppsSettingsTab.swift */,
+				F8272629D92AF6D8436E3012 /* DebugLogView.swift */,
 				982C57228CB76B4D291F9C5D /* ExecutionLogView.swift */,
-				DB9A1C2D3E4F5061728394A8D /* DebugLogView.swift */,
 				88D0558AB5CF20918710586D /* ExtensionsSettingsTab.swift */,
 				B046667D4B2820EA5E428CDD /* GeneralSettingsTab.swift */,
 				59CA55100CF81240021634FC /* NewFileSettingsTab.swift */,
@@ -172,18 +171,9 @@
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
-		FDA1B2C3D4E5F60718293A4D /* Permissions */ = {
-			isa = PBXGroup;
-			children = (
-				FDA1B2C3D4E5F60718293A4B /* FullDiskAccess.swift */,
-			);
-			path = Permissions;
-			sourceTree = "<group>";
-		};
 		3891F364B0653E2749B28F92 /* Preferences */ = {
 			isa = PBXGroup;
 			children = (
-				B2BF9DC882C191AA9A66BC1F /* MenuConfiguration.swift */,
 				40CE98C6FE58A80ADB8B26C5 /* SharedUserDefaults.swift */,
 			);
 			path = Preferences;
@@ -195,8 +185,8 @@
 				108A6DB428B7D682BFE80908 /* Constants.swift */,
 				FF59226764AF1CFFDC561239 /* Localizable.xcstrings */,
 				E071B965571E2ABBDB3F82C0 /* Models */,
+				C7488AA14655DF8168FE155E /* Permissions */,
 				3891F364B0653E2749B28F92 /* Preferences */,
-			FDA1B2C3D4E5F60718293A4D /* Permissions */,
 				B3FE1FE37D5A11521C160E3D /* RPC */,
 			);
 			path = Shared;
@@ -208,7 +198,6 @@
 				A3C2B33C43F556A0F45272B7 /* FinderExtension.entitlements */,
 				DD39CB04B25FC831003DBF3A /* FinderSync.swift */,
 				255056C34CEA98661DC8EE7A /* Info.plist */,
-				0CBECB73A36E2983BD394B54 /* MenuActionHandler.swift */,
 				BA6A993709DD16B536FE0476 /* MenuBuilder.swift */,
 			);
 			path = FinderExtension;
@@ -243,6 +232,14 @@
 			path = RPC;
 			sourceTree = "<group>";
 		};
+		C7488AA14655DF8168FE155E /* Permissions */ = {
+			isa = PBXGroup;
+			children = (
+				C09AC2EA078A73461EC5A868 /* FullDiskAccess.swift */,
+			);
+			path = Permissions;
+			sourceTree = "<group>";
+		};
 		C88E932ABD266B3527610F69 /* Products */ = {
 			isa = PBXGroup;
 			children = (
@@ -255,13 +252,14 @@
 		E071B965571E2ABBDB3F82C0 /* Models */ = {
 			isa = PBXGroup;
 			children = (
-				AE62B2AEB26ABD533E6BE6F5 /* ActionMenuItem.swift */,
-				6A61B788DDF2E3EAD81F4133 /* AppMenuItem.swift */,
-				86A57D93B91AC0A3A6F79288 /* CommandRequest.swift */,
+				FC5E0C5BC15FEDDB7E0F61DB /* ActionDef.swift */,
+				00AF79042FD48FEA0DD8AD91 /* AppConfig.swift */,
+				F47956DC7E90B6D3D32B6F45 /* AppTarget.swift */,
+				760406FE333A1D4F5AEC2E22 /* DebugLogEntry.swift */,
 				1E11FAF32F404EE1051398B4 /* ExecutionLogEntry.swift */,
-				DB9A1C2D3E4F5061728394A5 /* DebugLogEntry.swift */,
 				117CD93D5335254BE2E4C974 /* ExtensionInfo.swift */,
-				69E67F8AC8310E0732AFDB94 /* MenuItem.swift */,
+				F70C9B6C60DD0872D9CF0C9E /* MenuAction.swift */,
+				2FABE9BF0AD03A573DB2C6DF /* MenuConfig.swift */,
 				B9C495B11F638A04B8E3EFED /* NewFileTemplate.swift */,
 			);
 			path = Models;
@@ -373,29 +371,29 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				509C2E4BA5E686B51EA11748 /* ActionMenuItem.swift in Sources */,
+				6F2342ADFF8E258060B0A06A /* ActionDef.swift in Sources */,
 				3237E76B10AD05A83D9874CC /* ActionsSettingsTab.swift in Sources */,
-				9803AC52979C551481947554 /* AppMenuItem.swift in Sources */,
+				0AE957FF3E346F10B10DB94D /* AppConfig.swift in Sources */,
 				8274032C4E1DC02B573863A4 /* AppState.swift in Sources */,
+				AD263304DC153A8379EB56A1 /* AppTarget.swift in Sources */,
 				CA91B5C0EEBB92FAB08B26EC /* AppsSettingsTab.swift in Sources */,
-				5ABA55F5E5C6D48D34B07F2A /* CommandRequest.swift in Sources */,
 				A5053B099A0485A28783A82A /* CommandResult.swift in Sources */,
 				BAEBD582B5740CFC30BC6A90 /* Constants.swift in Sources */,
+				E702E217086B98672BD6A029 /* DebugLogEntry.swift in Sources */,
+				8C1DCB744046C5CD60F45EC3 /* DebugLogView.swift in Sources */,
 				CC1B9D616EDE28553F3FE470 /* ExecutionLogEntry.swift in Sources */,
 				FD33F2EA80667D971C6B361C /* ExecutionLogView.swift in Sources */,
-				DBB1C2D3E4F5061728394A6B /* DebugLogEntry.swift in Sources */,
-				DBB1C2D3E4F5061728394A9E /* DebugLogView.swift in Sources */,
 				81CD2A90DE36ED42D78C7B69 /* ExtensionInfo.swift in Sources */,
 				8DC27AE99A295224B0F2F696 /* ExtensionsSettingsTab.swift in Sources */,
+				D1E228AA903D17943BCF1688 /* FullDiskAccess.swift in Sources */,
 				A90ABA38D57C95A8880B6118 /* GeneralSettingsTab.swift in Sources */,
-				C4BD5057D366864129111BA3 /* MenuConfiguration.swift in Sources */,
-				A9D4693E26AF534902A7EC95 /* MenuItem.swift in Sources */,
+				3C76DB65B0292632DDE2C959 /* MenuAction.swift in Sources */,
+				1FE6196F4DB6FC244CA584CF /* MenuConfig.swift in Sources */,
 				6A9D31D9532EE14579A10D1C /* NewFileSettingsTab.swift in Sources */,
 				82ACB851B2BC1CF189915121 /* NewFileTemplate.swift in Sources */,
 				0B5469E7DCE4B1A94C499A4B /* RPCSession.swift in Sources */,
 				ADAFC6CA85BEB78250DC40F3 /* SettingsView.swift in Sources */,
 				5D47F2440E7DD71644A9E934 /* SharedUserDefaults.swift in Sources */,
-				FDA1B2C3D4E5F60718293A4C /* FullDiskAccess.swift in Sources */,
 				3588A946E437161A77DB85CB /* mac_right_menuApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -404,19 +402,19 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				3CADA174838B7825E0322020 /* ActionMenuItem.swift in Sources */,
-				516920CA93096E07838CA285 /* AppMenuItem.swift in Sources */,
-				46B5433DBA9B24B6803842E1 /* CommandRequest.swift in Sources */,
+				FE94FD09EFAA169AB2EC4322 /* ActionDef.swift in Sources */,
+				9792452408C1BFAA42FF8E22 /* AppConfig.swift in Sources */,
+				BFA59044C772DC1DD663CCAF /* AppTarget.swift in Sources */,
 				690F2CB0C5DE1FE0E93C652B /* CommandResult.swift in Sources */,
 				55237B827DC42929BB534AB9 /* Constants.swift in Sources */,
+				A33968B91D5995BFAD53A152 /* DebugLogEntry.swift in Sources */,
 				1FA1B55404E5A8A4B8F5B0DF /* ExecutionLogEntry.swift in Sources */,
-				DBB1C2D3E4F5061728394A7C /* DebugLogEntry.swift in Sources */,
 				C70DB4DF15626EF8462DEA74 /* ExtensionInfo.swift in Sources */,
 				9C07ABF04254FBD3155727FB /* FinderSync.swift in Sources */,
-				A0C6F748EC529DDF15F851D1 /* MenuActionHandler.swift in Sources */,
+				6C88CB96F5370E2F914C077D /* FullDiskAccess.swift in Sources */,
+				F1D46E556CCDE704D23E6A92 /* MenuAction.swift in Sources */,
 				F808D8A0162B38B342851688 /* MenuBuilder.swift in Sources */,
-				4D88EAF0DF9B98B2F7F40359 /* MenuConfiguration.swift in Sources */,
-				E945BC42E525987797674D68 /* MenuItem.swift in Sources */,
+				0053DA76BCC62F3B21183ACE /* MenuConfig.swift in Sources */,
 				4D7AC92E0205772785D0EE29 /* NewFileTemplate.swift in Sources */,
 				A3AB653447DEB32878DDA243 /* RPCSession.swift in Sources */,
 				4ACC97BF92B731BA6579BA34 /* SharedUserDefaults.swift in Sources */,
@@ -492,7 +490,6 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = 9H9AXS5ZLL;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -559,7 +556,6 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = 9H9AXS5ZLL;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;

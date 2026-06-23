@@ -47,7 +47,7 @@ public enum Constants {
     ]
 
     public enum Defaults {
-        public static let menuConfigKey = "menuConfiguration"
+        public static let appConfigKey = "appConfig"
         public static let isExtensionEnabledKey = "isExtensionEnabled"
         public static let commandLogOnlyKey = "commandLogOnly"
         public static let debugLogEnabledKey = "debugLogEnabled"

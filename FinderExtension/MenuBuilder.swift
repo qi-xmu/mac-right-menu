@@ -3,289 +3,203 @@ import os.log
 
 private let logger = Logger(subsystem: Constants.extensionBundleID, category: "menu-builder")
 
-/// Builds the NSMenu hierarchy from MenuConfiguration.
+/// Generic, structure-agnostic menu renderer.
 ///
-/// Performance: `menu(for:)` is invoked by Finder on EVERY right-click, and the
-/// cost of building a menu is dominated by image generation — not NSMenuItem
-/// allocation. Two paths are expensive:
-///   1. `NSWorkspace.shared.icon(forFile:)` — reads the app bundle off disk
-///      and rasterizes its icon.
-///   2. `icon(_:)` below — `NSImage(systemSymbolName:)` + `lockFocus` to bake a
-///      tinted bitmap. Each call re-decodes the symbol and re-renders pixels.
-/// Both are pure functions of their input (file path / symbol name) and never
-/// change within a process lifetime unless the source file changes, so they are
-/// memoized here. NSMenuItem construction itself is cheap pointer wiring and is
-/// left to run each call — that keeps menu(for:) free of any cross-thread menu
-/// object reuse concerns.
+/// Given a `MenuConfig` (a recursive `MenuItem` tree owned by the Container),
+/// `buildMenu` renders it into an `NSMenu` without knowing anything about what
+/// the items *do* — leaf clicks carry only an `actionID` (stored as the
+/// `NSMenuItem.tag`) which the Container resolves via its `ActionDefMap`.
+///
+/// Selection-dependent visibility is driven purely by per-node metadata
+/// (`showCondition` + `multiItemSupport`), stashed in each item's
+/// `representedObject` as a `NodeMeta`. `refreshSelectionState` re-applies that
+/// metadata in place on every right-click — cheap property writes, no rebuild.
 enum MenuBuilder {
 
-        private static var isDarkMode: Bool {
-            UserDefaults.standard.string(forKey: "AppleInterfaceStyle") == "Dark"
+    /// Per-item visibility metadata, attached to every `NSMenuItem` this
+    /// builder creates (leaves AND submenu headers) so `refreshSelectionState`
+    /// can hide/disable nodes without rebuilding the menu.
+    final class NodeMeta {
+        let showCondition: ShowCondition
+        let multiItemSupport: Bool
+        init(showCondition: ShowCondition, multiItemSupport: Bool) {
+            self.showCondition = showCondition
+            self.multiItemSupport = multiItemSupport
         }
+    }
 
-        /// Cache of tinted SF Symbol bitmaps keyed by symbol name. Values are
-        /// rebuilt only on appearance (dark/light) flip; in steady state every
-        /// right-click hits the cache and skips `lockFocus` rasterization.
-        /// Only ever touched from the Finder thread (menu(for:) is serialized
-        /// by Finder, and invalidateSymbolCache() is dispatched on .main), so
-        /// `nonisolated(unsafe)` is sound here without a lock.
-        nonisolated(unsafe) private static var symbolCache: [String: NSImage] = [:]
+    /// The right-click target's type, classified by the Extension on each click.
+    /// Empty space (no selection) counts as `.dir` (the containing folder), so
+    /// folder-oriented items such as New File can appear there.
+    enum TargetContext {
+        case file   // at least one selected item is a file
+        case dir    // folder(s) selected, or empty space
+    }
 
-        /// Cache of per-file icons from `NSWorkspace.shared.icon(forFile:)`,
-        /// keyed by absolute path. App icons live in bundles on disk; their
-        /// icon never changes while the app is installed, so caching avoids a
-        /// disk read + rasterization on every right-click. Same single-thread
-        /// access guarantee as `symbolCache`.
-        nonisolated(unsafe) private static var appIconCache: [String: NSImage] = [:]
+    // MARK: - Icon caches
 
-        /// Resolve an SF Symbol to an NSImage suitable for `NSMenuItem.image`.
-        ///
-        /// Implementation note: the old version created a blank bitmap NSImage
-        /// and used `lockFocus()` + `draw()` to bake a tinted, fixed-size copy.
-        /// `lockFocus()` forces the image to materialize a bitmap representation,
-        /// which internally calls `representationOfImageRepsInArray:usingType:properties:`
-        /// — that single call dominated the right-click flame graph at ~200ms /
-        /// ~82% of `menu(for:)`. It also had to be re-run on every appearance
-        /// flip (dark/light changes the tint).
-        ///
-        /// The replacement keeps the SF Symbol as a vector / lazily-rendered
-        /// image: we apply a `SymbolConfiguration` carrying both the point size
-        /// (so the image's `size` is 18pt) and the hierarchical color (black on
-        /// Light, white on Dark). NSMenuItem renders the image on the GPU at
-        /// draw time, which is dramatically cheaper than a CPU-side `lockFocus`
-        /// rasterization and needs no pre-baked bitmap. Because the color is
-        /// applied via configuration, an appearance flip still requires dropping
-        /// the cache (see `invalidateSymbolCache`), but there's no expensive
-        /// re-rasterization — just re-resolving the configuration.
-        private static func icon(_ name: String) -> NSImage {
-            if let cached = symbolCache[name] { return cached }
-            guard let symbol = NSImage(systemSymbolName: name, accessibilityDescription: nil) else {
-                // Unknown symbol: return a tiny placeholder so the menu still
-                // lays out correctly. Cached so we don't keep re-querying.
-                let placeholder = NSImage(size: NSSize(width: 18, height: 18))
-                symbolCache[name] = placeholder
-                return placeholder
+    private static var isDarkMode: Bool {
+        UserDefaults.standard.string(forKey: "AppleInterfaceStyle") == "Dark"
+    }
+
+    /// Cache of resolved SF Symbol images keyed by symbol name. Rebuilt only on
+    /// appearance flip. Mutated only from `resolveIcon`, reached solely via
+    /// `buildMenu`; since `menu(for:)` no longer builds menus, `buildMenu` runs
+    /// only on the main thread (via `rebuildCachedMenu`). `warmupCaches` and
+    /// `invalidateSymbolCache` are also main-dispatched. Main-only access makes
+    /// `nonisolated(unsafe)` sound without a lock.
+    nonisolated(unsafe) private static var symbolCache: [String: NSImage] = [:]
+
+    /// Cache of per-file app icons from `NSWorkspace.shared.icon(forFile:)`,
+    /// keyed by absolute path. Same main-only access guarantee as `symbolCache`.
+    nonisolated(unsafe) private static var appIconCache: [String: NSImage] = [:]
+
+    /// Resolve an SF Symbol to an NSImage sized/tinted for the menu. The symbol
+    /// stays a lazily-rendered vector (color applied via SymbolConfiguration),
+    /// which is far cheaper than a CPU-side `lockFocus` rasterization.
+    private static func symbolIcon(_ name: String) -> NSImage? {
+        if let cached = symbolCache[name] { return cached }
+        guard let symbol = NSImage(systemSymbolName: name, accessibilityDescription: nil) else {
+            return nil
+        }
+        let color: NSColor = isDarkMode ? .white : .black
+        let config = NSImage.SymbolConfiguration(pointSize: 18, weight: .regular)
+            .applying(NSImage.SymbolConfiguration(hierarchicalColor: color))
+        let resolved = symbol.withSymbolConfiguration(config) ?? symbol
+        symbolCache[name] = resolved
+        return resolved
+    }
+
+    /// Resolve an app icon, using the cached bitmap when the path was seen
+    /// before. Falls back to a live `NSWorkspace.shared.icon(forFile:)` call
+    /// (and caches it) on miss.
+    private static func appIcon(forPath path: String) -> NSImage? {
+        if let cached = appIconCache[path] { return cached }
+        let img = NSWorkspace.shared.icon(forFile: path)
+        appIconCache[path] = img
+        return img
+    }
+
+    private static func resolveIcon(_ icon: MenuIcon) -> NSImage? {
+        switch icon {
+        case .none:               return nil
+        case .sfSymbol(let name): return symbolIcon(name)
+        case .appIcon(let path):  return appIcon(forPath: path)
+        }
+    }
+
+    /// Drop cached SF Symbol images. Called when the appearance flips so symbol
+    /// tinting is regenerated for the new mode. App icons are
+    /// appearance-independent and kept.
+    static func invalidateSymbolCache() {
+        symbolCache.removeAll()
+    }
+
+    /// Eagerly populate both icon caches for the given config so the first
+    /// right-click after process launch doesn't pay the rasterization cost on
+    /// Finder's menu-critical path.
+    ///
+    /// Dispatched to the main thread because `NSWorkspace.icon(forFile:)` and
+    /// SF Symbol resolution are main-thread APIs. Idempotent — both cache
+    /// helpers early-return on a hit.
+    static func warmupCaches(for config: MenuConfig) {
+        DispatchQueue.main.async {
+            var symbols = Set<String>()
+            var paths = Set<String>()
+            collectIcons(in: config.menus, symbols: &symbols, paths: &paths)
+            for path in paths { _ = appIcon(forPath: path) }
+            for name in symbols { _ = symbolIcon(name) }
+            logger.notice("[Ext] MenuBuilder: icon caches warmed (\(paths.count) apps, \(symbols.count) symbols)")
+        }
+    }
+
+    private static func collectIcons(in nodes: [MenuItem], symbols: inout Set<String>, paths: inout Set<String>) {
+        for node in nodes {
+            switch node.icon {
+            case .sfSymbol(let name): symbols.insert(name)
+            case .appIcon(let path):  paths.insert(path)
+            case .none: break
             }
-            let color: NSColor = isDarkMode ? .white : .black
-            let config = NSImage.SymbolConfiguration(
-                pointSize: 18,
-                weight: .regular
-            ).applying(
-                NSImage.SymbolConfiguration(hierarchicalColor: color)
-            )
-            // `withSymbolConfiguration` returns a lazily-resolved image; the
-            // symbol stays a vector until actually drawn. Cache that resolved
-            // image so repeated menu builds reuse the same instance.
-            let resolved = symbol.withSymbolConfiguration(config) ?? symbol
-            symbolCache[name] = resolved
-            return resolved
+            collectIcons(in: node.subMenus, symbols: &symbols, paths: &paths)
         }
+    }
 
-        /// Resolve an app icon, using the cached bitmap when the path was seen
-        /// before. Falls back to a live `NSWorkspace.shared.icon(forFile:)`
-        /// call (and caches it) on miss.
-        private static func appIcon(forPath path: String) -> NSImage {
-            if let cached = appIconCache[path] { return cached }
-            let img = NSWorkspace.shared.icon(forFile: path)
-            appIconCache[path] = img
-            return img
-        }
+    // MARK: - Build
 
-        /// Drop all cached images. Called when the appearance flips (dark/light)
-        /// so symbol tinting is regenerated for the new mode. App icons are
-        /// appearance-independent and kept.
-        static func invalidateSymbolCache() {
-            symbolCache.removeAll()
-        }
-
-        /// Eagerly populate both icon caches for the given configuration, so the
-        /// first `menu(for:)` after process launch doesn't pay the full
-        /// rasterization cost on Finder's menu-critical path.
-        ///
-        /// Background: the Extension process is NOT persistent — pkd reaps idle
-        /// Finder Sync extension processes, so each right-click can relaunch Ext
-        /// (new PID) with a cold cache. Without warmup, the first right-click's
-        /// `rebuildCachedMenu` synchronously runs `NSWorkspace.icon(forFile:)`
-        /// (reads each app's .icns, decodes TIFF) + SF Symbol `lockFocus` per
-        /// item — exactly the TIFF IO the flame graph flagged.
-        ///
-        /// Warmup is dispatched to the main thread because
-        /// `NSWorkspace.shared.icon(forFile:)` and `NSImage.lockFocus` are
-        /// main-thread APIs; calling them from the RPC background thread (as
-        /// rebuildCachedMenu used to) was a latent correctness bug. It's also
-        /// idempotent — both `icon(_:)` and `appIcon(forPath:)` early-return on
-        /// a cache hit, so repeated calls (config change, appearance flip) are
-        /// cheap no-ops once the cache is warm.
-        ///
-        /// - Note: this returns immediately; the actual work happens async on
-        ///   the main queue, overlapping with the 1-3s RPC connect/config-fetch
-        ///   window so it costs the user no perceived latency.
-        static func warmupCaches(for configuration: MenuConfiguration) {
-            DispatchQueue.main.async {
-                // App icons: every enabled app in the config. Keyed by path in
-                // appIconCache, so this is what buildMenu will look up later.
-                for app in configuration.appItems where app.isEnabled {
-                    _ = appIcon(forPath: app.appURL.path)
-                }
-                // SF Symbols: the fixed set the menu can render — action icons
-                // (from ActionType.systemIconName), the New File submenu header,
-                // the Open With submenu header, and the fallback gear.
-                var symbols = Set<String>([
-                    "doc.badge.plus",            // New File header + section
-                    "menubar.dock.rectangle",    // Open With header
-                    "gearshape"                  // fallback for action w/o icon
-                ])
-                for actionType in ActionType.allCases {
-                    symbols.insert(actionType.systemIconName)
-                }
-                for name in symbols {
-                    _ = icon(name)
-                }
-                logger.notice("[Ext] MenuBuilder: icon caches warmed (\(configuration.appItems.count) apps, \(symbols.count) symbols)")
-            }
-        }
-
-    static func buildMenu(
-        configuration: MenuConfiguration,
-        hasSelection: Bool,
-        targetURL: URL?,
-        target: AnyObject,
-        action handlerSelector: Selector
-    ) -> NSMenu {
+    /// Build the full `NSMenu` for a config. `target`/`action` are wired onto
+    /// every leaf; submenu headers get no action (their `actionID` is never
+    /// dispatched). A node's icon shows only when both the global
+    /// `config.showAppIcons` and the node's own `showAppIcons` are true.
+    static func buildMenu(config: MenuConfig, target: AnyObject, action handlerSelector: Selector) -> NSMenu {
         let menu = NSMenu(title: String(localized: "mac-right-menu"))
-
-        let enabledApps = configuration.appItems.filter(\.isEnabled)
-        let enabledActions = configuration.actionItems.filter(\.isEnabled)
-
-        // ── Section: New File (tag: 0–999) ──
-        // Available in BOTH selection and container (empty-space) contexts:
-        // creating a new file is the primary action users want when they
-        // right-click in an empty folder. The handler falls back to
-        // `targetURL` (the folder itself) when nothing is selected.
-        if enabledActions.contains(where: { $0.actionType == .newFile }) {
-            // Only enabled templates appear, and their tags are numbered
-            // consecutively over this filtered list (matching AppState, which
-            // resolves the index against the same filter).
-            let templates = configuration.newFileTemplates.filter(\.isEnabled)
-            if !templates.isEmpty {
-                // Uses a dedicated "New File" key (not the shared "File" key,
-                // which is also the Settings tab label / action-row title) so
-                // the Finder submenu can read "新建文件" without touching those.
-                let submenuItem = NSMenuItem(title: String(localized: "New File"), action: nil, keyEquivalent: "")
-                if configuration.showMenuIcons {
-                    submenuItem.image = icon("doc.badge.plus")
-                }
-                let submenu = NSMenu(title: String(localized: "New File"))
-                for (index, template) in templates.enumerated() {
-                    let item = NSMenuItem(title: template.resolvedFileName, action: handlerSelector, keyEquivalent: "")
-                    item.target = target
-                    item.tag = Constants.TagBase.newFile.rawValue + index
-                    item.representedObject = template
-                    submenu.addItem(item)
-                }
-                menu.setSubmenu(submenu, for: submenuItem)
-                menu.addItem(submenuItem)
-            }
+        for node in config.menus {
+            addNode(node, to: menu, target: target, action: handlerSelector, iconsShown: config.showAppIcons)
         }
-
-        // ── Section: Open With (tag: 1000–1999) ──
-        // Gated by the section master switch in addition to per-app enabled.
-        // Built into the cached menu unconditionally (so config changes don't
-        // require a rebuild per click); `refreshSelectionState` hides the whole
-        // section when there's no selection, since opening a file with an app
-        // requires a target file.
-        if configuration.appsSectionEnabled, !enabledApps.isEmpty {
-            if enabledApps.count == 1, let app = enabledApps.first {
-                let item = NSMenuItem(
-                    title: String(localized: "Open in \(app.displayName)"),
-                    action: handlerSelector,
-                    keyEquivalent: ""
-                )
-                item.target = target
-                item.tag = Constants.TagBase.appItem.rawValue
-                if configuration.showAppIcons {
-                    item.image = appIcon(forPath: app.appURL.path)
-                }
-                item.isEnabled = hasSelection
-                item.representedObject = app
-                menu.addItem(item)
-            } else {
-                let submenuItem = NSMenuItem(title: String(localized: "Open With"), action: nil, keyEquivalent: "")
-                if configuration.showMenuIcons {
-                    submenuItem.image = icon("menubar.dock.rectangle")
-                }
-                let submenu = NSMenu(title: String(localized: "Open With"))
-                for (index, app) in enabledApps.enumerated() {
-                    let appItem = NSMenuItem(title: app.displayName, action: handlerSelector, keyEquivalent: "")
-                    appItem.target = target
-                    appItem.tag = Constants.TagBase.appItem.rawValue + index
-                    if configuration.showAppIcons {
-                        appItem.image = appIcon(forPath: app.appURL.path)
-                    }
-                    appItem.representedObject = app
-                    appItem.isEnabled = hasSelection
-                    submenu.addItem(appItem)
-                }
-                menu.setSubmenu(submenu, for: submenuItem)
-                menu.addItem(submenuItem)
-            }
-        }
-
-        // ── Section: 操作 (tag: 2000–2999) ──
-        // Same rationale as Open With: built unconditionally into the cached
-        // menu; `refreshSelectionState` hides each item when nothing is picked,
-        // since Copy Path / Copy Name / Toggle Hidden all need a target file.
-        let operationActions: [ActionType] = [.copyPath, .copyFileName, .toggleHidden]
-        let hasOps = enabledActions.contains(where: { operationActions.contains($0.actionType) })
-        if hasOps {
-            for actionItem in enabledActions where operationActions.contains(actionItem.actionType) {
-                let tag: Int
-                switch actionItem.actionType {
-                case .copyPath:     tag = Constants.TagBase.copyPath.rawValue
-                case .copyFileName: tag = Constants.TagBase.copyFileName.rawValue
-                case .toggleHidden: tag = Constants.TagBase.toggleHidden.rawValue
-                default:            continue
-                }
-                let item = NSMenuItem(title: actionItem.title, action: handlerSelector, keyEquivalent: "")
-                item.target = target
-                item.tag = tag
-                if configuration.showMenuIcons {
-                    item.image = actionItem.iconName.flatMap { icon($0) } ?? icon("gearshape")
-                }
-                item.isEnabled = hasSelection
-                menu.addItem(item)
-            }
-        }
-
         return menu
     }
 
-    /// Refresh the selection-dependent state of a cached NSMenu in place.
-    /// Called from `menu(for:)` on every right-click — the only thing that
-    /// changes between clicks for a fixed config is whether a file is picked.
-    ///
-    /// - Top-level file-dependent items (Open With section header, the single-app
-    ///   "Open in X" item, and each operation action) are hidden when there's no
-    ///   selection. Hiding the header hides its submenu too.
-    /// - Leaf items under a visible section get `isEnabled` toggled so they look
-    ///   live vs. disabled-grayed without rebuilding.
-    ///
-    /// Tag ranges (see Constants.TagBase) identify which items are file-dependent:
-    /// New File (0–999) is always shown; Open With (1000–1999) and the operation
-    /// actions (2000–2999) depend on a selection.
-    static func refreshSelectionState(_ menu: NSMenu, hasSelection: Bool) {
-        for item in menu.items {
-            let tag = item.tag
-            if tag >= Constants.TagBase.appItem.rawValue && tag < Constants.TagBase.shell.rawValue {
-                // Open With section (1000–1999) — header or single-app leaf.
-                item.isHidden = !hasSelection
-                item.isEnabled = hasSelection
-            } else if tag >= Constants.TagBase.copyPath.rawValue && tag < Constants.TagBase.shell.rawValue {
-                // Operation actions (2000–2999): copyPath / copyFileName / toggleHidden.
-                item.isHidden = !hasSelection
-                item.isEnabled = hasSelection
+    private static func addNode(_ node: MenuItem, to menu: NSMenu, target: AnyObject, action handlerSelector: Selector, iconsShown: Bool) {
+        guard node.isEnabled else { return }
+        let showImage = iconsShown && node.showAppIcons
+        let meta = NodeMeta(showCondition: node.showCondition, multiItemSupport: node.multiItemSupport)
+
+        if node.subMenus.isEmpty {
+            // Leaf: carries the actionID the Container will resolve.
+            let item = NSMenuItem(title: node.name, action: handlerSelector, keyEquivalent: "")
+            item.target = target
+            item.tag = node.actionID
+            item.representedObject = meta
+            if showImage { item.image = resolveIcon(node.icon) }
+            menu.addItem(item)
+        } else {
+            // Submenu header: no action; its visibility drives the whole
+            // section (hiding the header hides its submenu too).
+            let header = NSMenuItem(title: node.name, action: nil, keyEquivalent: "")
+            header.representedObject = meta
+            if showImage { header.image = resolveIcon(node.icon) }
+            let submenu = NSMenu(title: node.name)
+            for child in node.subMenus {
+                // Pass the original iconsShown (global toggle) — NOT showImage
+                // (which incorporates the parent's per-node setting). Each node
+                // independently evaluates iconsShown && itsOwnShowAppIcons, so
+                // a section header's ikon preference doesn't leak into its
+                // children (e.g. "Show App Icons" toggle in the Apps tab should
+                // only gate the section header's SF Symbol, not the individual
+                // app leaf icons).
+                addNode(child, to: submenu, target: target, action: handlerSelector, iconsShown: iconsShown)
             }
-            // New File (0–999) and anything else: leave as-is.
+            menu.setSubmenu(submenu, for: header)
+            menu.addItem(header)
+        }
+    }
+
+    // MARK: - Per-click refresh
+
+    /// Re-apply each item's `showCondition` / `multiItemSupport` against the
+    /// current click context, in place. The only thing that changes between
+    /// clicks for a fixed config is the selection, so this is cheap property
+    /// writes — no menu rebuild.
+    static func refreshSelectionState(_ menu: NSMenu, context: TargetContext, selectedCount: Int) {
+        for item in menu.items {
+            let meta = item.representedObject as? NodeMeta
+            let condOK: Bool
+            switch meta?.showCondition ?? .both {
+            case .isFile: condOK = (context == .file)
+            case .isDir:  condOK = (context == .dir)
+            case .both:   condOK = true
+            }
+            let multiOK = (meta?.multiItemSupport ?? true) || selectedCount <= 1
+            var visible = condOK && multiOK
+            // Refresh children first, then collapse a section header whose
+            // submenu has no visible leaves — an empty "Open With ▸" is just
+            // clutter. (Recursing before writing this item is safe: they touch
+            // different NSMenuItem objects.)
+            if let submenu = item.submenu {
+                refreshSelectionState(submenu, context: context, selectedCount: selectedCount)
+                if !submenu.items.contains(where: { !$0.isHidden }) { visible = false }
+            }
+            item.isHidden = !visible
+            item.isEnabled = visible
         }
     }
 }

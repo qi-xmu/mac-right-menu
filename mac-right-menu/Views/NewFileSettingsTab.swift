@@ -12,7 +12,7 @@ struct NewFileSettingsTab: View {
             // MARK: - Section: New File master switch
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text(String(localized: "New File"))
+                    Text("New File")
                         .fontWeight(.medium)
                     Spacer()
                     Toggle("", isOn: Binding(
@@ -22,7 +22,7 @@ struct NewFileSettingsTab: View {
                     .toggleStyle(.switch)
                     .controlSize(.mini)
                 }
-                Text(String(localized: "Create a new file from templates"))
+                Text("Create a new file from templates")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.leading, 2)
@@ -42,7 +42,7 @@ struct NewFileSettingsTab: View {
             .padding(.vertical, 12)
 
             // MARK: - List (fills remaining height)
-            if appState.newFileTemplates.isEmpty {
+            if appState.templateRows.isEmpty {
                 Spacer()
                 ContentUnavailableView(
                     "No Templates",
@@ -53,32 +53,26 @@ struct NewFileSettingsTab: View {
             } else {
                 VStack(spacing: 8) {
                     List(selection: $selection) {
-                        ForEach(appState.newFileTemplates) { template in
+                        ForEach(appState.templateRows) { row in
                             HStack {
-                                Image(systemName: iconForExtension(template.fileExtension))
+                                Image(systemName: iconForExtension(row.template.fileExtension))
                                     .frame(width: 20)
                                     .foregroundStyle(.secondary)
-                                Text(template.resolvedFileName)
+                                Text(row.template.resolvedFileName)
                                     .fontWeight(.medium)
                                 Spacer()
                                 Toggle("", isOn: Binding(
-                                    get: { template.isEnabled },
-                                    set: { newValue in
-                                        if let index = appState.newFileTemplates.firstIndex(where: { $0.id == template.id }) {
-                                            appState.configuration.newFileTemplates[index].isEnabled = newValue
-                                            appState.saveConfiguration()
-                                        }
-                                    }
+                                    get: { row.isEnabled },
+                                    set: { newValue in appState.setTemplateEnabled(id: row.id, enabled: newValue) }
                                 ))
                                 .toggleStyle(.switch)
                                 .controlSize(.mini)
                             }
                             .padding(.vertical, 2)
-                            .tag(template.id)
+                            .tag(row.id)
                         }
                         .onDelete { offsets in
-                            appState.configuration.newFileTemplates.remove(atOffsets: offsets)
-                            appState.saveConfiguration()
+                            appState.removeTemplate(at: offsets)
                         }
                     }
                     .listStyle(.inset)
@@ -92,7 +86,7 @@ struct NewFileSettingsTab: View {
                 )
             }
 
-            if appState.newFileTemplates.isEmpty {
+            if appState.templateRows.isEmpty {
                 Divider()
                 toolbar
             }
@@ -117,9 +111,8 @@ struct NewFileSettingsTab: View {
 
             Button {
                 if let id = selection,
-                   let index = appState.newFileTemplates.firstIndex(where: { $0.id == id }) {
-                    appState.configuration.newFileTemplates.remove(at: index)
-                    appState.saveConfiguration()
+                   let index = appState.templateRows.firstIndex(where: { $0.id == id }) {
+                    appState.removeTemplate(at: IndexSet(integer: index))
                     selection = nil
                 }
             } label: {
@@ -139,7 +132,7 @@ struct NewFileSettingsTab: View {
             Text("Add File Template")
                 .font(.headline)
 
-            TextField(String(localized: "Untitled"), text: $newFileName)
+            TextField("Untitled", text: $newFileName)
                 .textFieldStyle(.roundedBorder)
 
             HStack {
@@ -153,12 +146,7 @@ struct NewFileSettingsTab: View {
                 Button("Cancel") { showingAddTemplate = false }
                 Button("Add") {
                     let trimmed = newFileName.trimmingCharacters(in: .whitespaces)
-                    let template = NewFileTemplate(
-                        fileName: trimmed,
-                        fileExtension: newExtension
-                    )
-                    appState.configuration.newFileTemplates.append(template)
-                    appState.saveConfiguration()
+                    appState.addTemplate(fileName: trimmed, fileExtension: newExtension)
                     showingAddTemplate = false
                     newExtension = "txt"
                     newFileName = ""

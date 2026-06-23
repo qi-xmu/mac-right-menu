@@ -29,7 +29,8 @@ class TestBuildResponse:
 
 class TestBuildConfigResponse:
     def test_build_config_response_wraps_config(self):
-        config = {"isEnabled": True, "appItems": [], "actionItems": [], "newFileTemplates": [], "appsSectionEnabled": True}
+        # MenuConfig shape: {isEnabled, showAppIcons, menus: [MenuItem]}
+        config = {"isEnabled": True, "showAppIcons": True, "menus": []}
         reply = srv.build_config_response(rid=3, config=config)
         assert reply["jsonrpc"] == "2.0"
         assert reply["id"] == 3
@@ -59,25 +60,25 @@ class TestDispatchMessage:
 
     def test_getConfig_returns_config_response(self):
         msg = {"jsonrpc": "2.0", "id": 2, "method": "getConfig"}
-        config = {"isEnabled": True, "appItems": [{"id": "test"}], "actionItems": [], "newFileTemplates": [], "appsSectionEnabled": True}
+        config = {"isEnabled": True, "showAppIcons": True, "menus": [{"id": "op.copyPath"}]}
         reply = srv.dispatch_message(msg, config)
         assert reply is not None
         assert reply["id"] == 2
         assert reply["result"]["config"] == config
 
-    def test_executeCommand_returns_success_and_no_config(self):
+    def test_executeAction_returns_success_and_no_config(self):
         msg = {
             "jsonrpc": "2.0",
             "id": 3,
-            "method": "executeCommand",
-            "params": {"action": 0, "files": ["/tmp/test.txt"], "command": None, "extra": None},
+            "method": "executeAction",
+            "params": {"actionID": 2000, "targetURL": "/tmp", "selectedURLs": ["/tmp/test.txt"]},
         }
-        config = {"isEnabled": True}
+        config = {"isEnabled": True, "showAppIcons": True, "menus": []}
         reply = srv.dispatch_message(msg, config)
         assert reply is not None
         assert reply["id"] == 3
         assert reply["result"]["success"] is True
-        # executeCommand must NOT carry config
+        # executeAction must NOT carry config
         assert "config" not in reply["result"]
 
     def test_unknown_method_with_id_returns_error(self):
@@ -109,13 +110,29 @@ class TestDispatchMessage:
 
 
 class TestActionName:
-    def test_known_actions(self):
+    """actionID → name mapping, by range (see Constants.TagBase)."""
+
+    def test_new_file_range(self):
+        # 0–999: newFile (0 + templateIndex)
         assert srv.action_name(0) == "newFile"
-        assert srv.action_name(1) == "openWithApp"
-        assert srv.action_name(2) == "copyPath"
-        assert srv.action_name(3) == "copyFileName"
-        assert srv.action_name(4) == "toggleHidden"
-        assert srv.action_name(6) == "shell"
+        assert srv.action_name(1) == "newFile"
+        assert srv.action_name(999) == "newFile"
+
+    def test_open_with_range(self):
+        # 1000–1999: openWith (1000 + appIndex)
+        assert srv.action_name(1000) == "openWith"
+        assert srv.action_name(1500) == "openWith"
+
+    def test_general_operations_fixed_ids(self):
+        assert srv.action_name(2000) == "copyPath"
+        assert srv.action_name(2001) == "copyFileName"
+        assert srv.action_name(2002) == "toggleHidden"
+
+    def test_shell_range(self):
+        # 4000–4999: shell (reserved)
+        assert srv.action_name(4000) == "shell"
+        assert srv.action_name(4999) == "shell"
 
     def test_unknown_action(self):
-        assert srv.action_name(99) == "unknown(99)"
+        # 3000 falls in the gap between general ops (2002) and shell (4000).
+        assert srv.action_name(3000) == "unknown(3000)"

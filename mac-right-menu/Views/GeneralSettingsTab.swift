@@ -42,13 +42,13 @@ struct GeneralSettingsTab: View {
 
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
-                        Text(String(localized: "Show Menu Icons"))
+                        Text("Show Icons")
                         Spacer()
-                        Toggle("", isOn: $appState.showMenuIcons)
+                        Toggle("", isOn: $appState.showIcons)
                             .toggleStyle(.switch)
                             .controlSize(.mini)
                     }
-                    Text(String(localized: "Display SF Symbol icons next to action items (Copy Path, Copy File Name, etc.) in the right-click menu. Submenu headers are unaffected."))
+                    Text("Display icons next to items in the right-click menu. App icons may significantly affect menu opening speed; disable 'Show App Icons' in the Apps tab if the menu feels slow.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .padding(.leading, 2)
@@ -98,7 +98,7 @@ struct GeneralSettingsTab: View {
                     Button {
                         restartApp()
                     } label: {
-                        Label(String(localized: "Restart"), systemImage: "arrow.trianglehead.clockwise")
+                        Label("Restart", systemImage: "arrow.trianglehead.clockwise")
                     }
 
                     Button {
@@ -107,14 +107,14 @@ struct GeneralSettingsTab: View {
                             NSApplication.shared.terminate(nil)
                         }
                     } label: {
-                        Label(String(localized: "Quit"), systemImage: "xmark.square")
+                        Label("Quit", systemImage: "xmark.square")
                     }
 
                     Button(role: .destructive) {
                         showingResetConfirm = true
                     } label: {
                         Label(
-                            String(localized: "Reset"),
+                            "Reset",
                             systemImage: "arrow.counterclockwise"
                         )
                     }
@@ -159,7 +159,7 @@ struct GeneralSettingsTab: View {
                 Button {
                     appState.checkFullDiskAccess()
                 } label: {
-                    Label(String(localized: "Refresh"), systemImage: "arrow.clockwise")
+                    Label("Refresh", systemImage: "arrow.clockwise")
                 }
                 .buttonStyle(.borderless)
                 .help(String(localized: "Re-check Full Disk Access status"))
@@ -193,7 +193,7 @@ struct GeneralSettingsTab: View {
                     Button {
                         appState.openSystemSettingsForFullDiskAccess()
                     } label: {
-                        Label(String(localized: "Open System Settings…"), systemImage: "gear")
+                        Label("Open System Settings…", systemImage: "gear")
                     }
                 }
             }

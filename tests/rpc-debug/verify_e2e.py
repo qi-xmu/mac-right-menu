@@ -60,15 +60,15 @@ async def main():
         resp = json.loads((await reader.read(65536)).rstrip(b"\n"))
         check("getConfig → has config", "config" in resp["result"], str(resp)[:80])
 
-        # Test 3: executeCommand
+        # Test 3: executeAction
         req = {
-            "jsonrpc": "2.0", "id": 3, "method": "executeCommand",
-            "params": {"action": 2, "files": ["/tmp/test.txt"], "command": None, "extra": None},
+            "jsonrpc": "2.0", "id": 3, "method": "executeAction",
+            "params": {"actionID": 2000, "targetURL": "/tmp", "selectedURLs": ["/tmp/test.txt"]},
         }
         writer.write(srv.encode_message(req))
         await writer.drain()
         resp = json.loads((await reader.read(65536)).rstrip(b"\n"))
-        check("executeCommand → success", resp["result"]["success"] is True, str(resp))
+        check("executeAction → success", resp["result"]["success"] is True, str(resp))
 
         # Test 4: unknown method
         req = {"jsonrpc": "2.0", "id": 4, "method": "unknownMethod"}

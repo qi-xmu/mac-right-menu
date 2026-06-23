@@ -1,35 +1,139 @@
 {
   "isEnabled": true,
-  "appsSectionEnabled": true,
-  "appItems": [
+  "showAppIcons": true,
+  "menus": [
     {
-      "id": "/Applications/Visual Studio Code.app",
-      "title": "Open with VS Code",
+      "id": "section.newFile",
       "isEnabled": true,
-      "appURL": "file:///Applications/Visual%20Studio%20Code.app",
-      "displayName": "Visual Studio Code",
-      "arguments": [],
-      "environment": {}
+      "showAppIcons": true,
+      "showCondition": "isDir",
+      "multiItemSupport": false,
+      "actionID": 0,
+      "icon": {
+        "sfSymbol": {
+          "_0": "doc.badge.plus"
+        }
+      },
+      "name": "New File",
+      "subMenus": [
+        {
+          "id": "newFile.Untitled.txt",
+          "isEnabled": true,
+          "showAppIcons": false,
+          "showCondition": "isDir",
+          "multiItemSupport": false,
+          "actionID": 0,
+          "icon": {
+            "none": {}
+          },
+          "name": "Untitled.txt",
+          "subMenus": []
+        },
+        {
+          "id": "newFile.Untitled.md",
+          "isEnabled": true,
+          "showAppIcons": false,
+          "showCondition": "isDir",
+          "multiItemSupport": false,
+          "actionID": 1,
+          "icon": {
+            "none": {}
+          },
+          "name": "Untitled.md",
+          "subMenus": []
+        }
+      ]
     },
     {
-      "id": "/Applications/Terminal.app",
-      "title": "Open with Terminal",
+      "id": "section.apps",
       "isEnabled": true,
-      "appURL": "file:///Applications/Terminal.app",
-      "displayName": "Terminal",
-      "arguments": [],
-      "environment": {}
+      "showAppIcons": true,
+      "showCondition": "both",
+      "multiItemSupport": true,
+      "actionID": 0,
+      "icon": {
+        "sfSymbol": {
+          "_0": "menubar.dock.rectangle"
+        }
+      },
+      "name": "Open With",
+      "subMenus": [
+        {
+          "id": "app./Applications/Visual Studio Code.app",
+          "isEnabled": true,
+          "showAppIcons": false,
+          "showCondition": "both",
+          "multiItemSupport": true,
+          "actionID": 1000,
+          "icon": {
+            "appIcon": {
+              "_0": "/Applications/Visual Studio Code.app"
+            }
+          },
+          "name": "Visual Studio Code",
+          "subMenus": []
+        },
+        {
+          "id": "app./System/Applications/Utilities/Terminal.app",
+          "isEnabled": true,
+          "showAppIcons": false,
+          "showCondition": "both",
+          "multiItemSupport": true,
+          "actionID": 1001,
+          "icon": {
+            "appIcon": {
+              "_0": "/System/Applications/Utilities/Terminal.app"
+            }
+          },
+          "name": "Terminal",
+          "subMenus": []
+        }
+      ]
+    },
+    {
+      "id": "op.copyPath",
+      "isEnabled": true,
+      "showAppIcons": true,
+      "showCondition": "both",
+      "multiItemSupport": true,
+      "actionID": 2000,
+      "icon": {
+        "sfSymbol": {
+          "_0": "document.on.clipboard"
+        }
+      },
+      "name": "Copy Path",
+      "subMenus": []
+    },
+    {
+      "id": "op.copyFileName",
+      "isEnabled": true,
+      "showAppIcons": true,
+      "showCondition": "both",
+      "multiItemSupport": true,
+      "actionID": 2001,
+      "icon": {
+        "sfSymbol": {
+          "_0": "text.cursor"
+        }
+      },
+      "name": "Copy File Name",
+      "subMenus": []
+    },
+    {
+      "id": "op.toggleHidden",
+      "isEnabled": true,
+      "showAppIcons": true,
+      "showCondition": "both",
+      "multiItemSupport": true,
+      "actionID": 2002,
+      "icon": {
+        "sfSymbol": {
+          "_0": "eye.slash"
+        }
+      },
+      "name": "Toggle Hidden",
+      "subMenus": []
     }
-  ],
-  "actionItems": [
-    {"actionType": "newFile", "isEnabled": true},
-    {"actionType": "copyPath", "isEnabled": true},
-    {"actionType": "copyFileName", "isEnabled": true},
-    {"actionType": "toggleHidden", "isEnabled": true}
-  ],
-  "newFileTemplates": [
-    {"fileName": "", "fileExtension": "txt", "defaultContent": "", "isEnabled": true},
-    {"fileName": "", "fileExtension": "md", "defaultContent": "", "isEnabled": true},
-    {"fileName": "", "fileExtension": "swift", "defaultContent": "import Foundation\n\n", "isEnabled": true}
   ]
 }

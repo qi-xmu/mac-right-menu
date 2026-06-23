@@ -17,19 +17,23 @@ public struct DebugLogEntry: Identifiable, Sendable {
     public let category: Category
     /// RPC direction from the Container's viewpoint. Non-RPC entries are nil.
     public let direction: Direction?
-    /// RPC method ("ping"/"pong"/"executeCommand"/"getConfig"/"configDidChange"/
+    /// RPC method ("ping"/"pong"/"executeAction"/"getConfig"/"configDidChange"/
     /// "shutdown"/"response") or a connection/wake descriptor. nil for lifecycle.
     public let method: String?
     public let rpcID: Int?
     public let summary: String
     /// Full payload detail for the event — e.g. the actual file paths in an
-    /// `executeCommand` request, the shell command string, an error description
+    /// `executeAction` request, the shell command string, an error description
     /// in a response, or app/action/template counts in a config push. nil when
     /// the event has no payload beyond its summary (heartbeats, lifecycle).
     ///
     /// Kept separate from `summary` so the list row stays compact while the
     /// detail is available on expand / hover / export. Multi-line where useful.
     public let detail: String?
+    /// The raw JSON-RPC payload as transmitted over the wire, for
+    /// expand-to-inspect rendering in the Debug Log view.
+    /// nil for events that are not RPC message exchanges (heartbeats, lifecycle).
+    public let rawPayload: String?
     /// > 1 means this entry collapses `count` consecutive heartbeats.
     public var count: Int
 
@@ -57,6 +61,7 @@ public struct DebugLogEntry: Identifiable, Sendable {
         rpcID: Int? = nil,
         summary: String,
         detail: String? = nil,
+        rawPayload: String? = nil,
         count: Int = 1
     ) {
         self.id = id
@@ -68,6 +73,7 @@ public struct DebugLogEntry: Identifiable, Sendable {
         self.rpcID = rpcID
         self.summary = summary
         self.detail = detail
+        self.rawPayload = rawPayload
         self.count = count
     }
 }
@@ -83,9 +89,12 @@ public struct RPCActivity: Sendable {
     public let method: String?
     public let rpcID: Int?
     public let summary: String
-    /// Full payload detail, or nil if the event carries none. See
-    /// `DebugLogEntry.detail`.
+    /// Human-readable payload summary, or nil if the event carries none.
+    /// See `DebugLogEntry.detail`.
     public let detail: String?
+    /// The raw JSON payload as transmitted over the wire, for expand-to-inspect.
+    /// nil for events that aren't RPC message exchanges (heartbeats, lifecycle).
+    public let rawPayload: String?
     /// When true, the Container collapses adjacent heartbeat activities into a
     /// single DebugLogEntry (avoids 1s-interval ping/pong flooding the log).
     public let isHeartbeat: Bool
@@ -97,6 +106,7 @@ public struct RPCActivity: Sendable {
         rpcID: Int? = nil,
         summary: String,
         detail: String? = nil,
+        rawPayload: String? = nil,
         isHeartbeat: Bool = false
     ) {
         self.kind = kind
@@ -105,6 +115,7 @@ public struct RPCActivity: Sendable {
         self.rpcID = rpcID
         self.summary = summary
         self.detail = detail
+        self.rawPayload = rawPayload
         self.isHeartbeat = isHeartbeat
     }
 }

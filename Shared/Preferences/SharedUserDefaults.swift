@@ -11,17 +11,19 @@ public enum SharedUserDefaults {
 
     nonisolated(unsafe) private static let defaults = UserDefaults.standard
 
-    // MARK: - Menu Configuration
+    // MARK: - App Configuration (menu tree + action definitions)
 
-    public static var menuConfiguration: MenuConfiguration {
+    /// The persisted `AppConfig` (menu tree + `ActionDefMap`). Each process
+    /// keeps its own store; the Container pushes the `menu` half to the
+    /// Extension over RPC via `configDidChange` / `getConfig`.
+    public static var appConfig: AppConfig {
         get {
-            guard let data = defaults.data(forKey: Constants.Defaults.menuConfigKey) else {
+            guard let data = defaults.data(forKey: Constants.Defaults.appConfigKey) else {
                 logger.notice("Config read: using default")
                 return .default
             }
-            let config = (try? JSONDecoder().decode(MenuConfiguration.self, from: data)) ?? .default
-            let actions = config.actionItems.map { "\($0.actionType):\($0.isEnabled ? "on" : "off")" }.joined(separator: " ")
-            logger.notice("Config read: enabled=\(config.isEnabled) apps=\(config.appItems.count) actions=[\(actions, privacy: .public)] templates=\(config.newFileTemplates.count)")
+            let config = (try? JSONDecoder().decode(AppConfig.self, from: data)) ?? .default
+            logger.notice("Config read: enabled=\(config.menu.isEnabled) menus=\(config.menu.menus.count) actions=\(config.actions.count)")
             return config
         }
         set {
@@ -36,7 +38,7 @@ public enum SharedUserDefaults {
                 logger.error("Config write: \(data.count) bytes exceeds the 4 MB UserDefaults limit — refusing to write. Check for unintended large fields (e.g. icon bitmaps).")
                 return
             }
-            defaults.set(data, forKey: Constants.Defaults.menuConfigKey)
+            defaults.set(data, forKey: Constants.Defaults.appConfigKey)
         }
     }
 
@@ -65,7 +67,7 @@ public enum SharedUserDefaults {
 
     // MARK: - Execution Log Enabled
 
-    /// Whether the Execution Log window should record command executions.
+    /// Whether the Execution Log window records command executions.
     /// On by default since this is the primary user-facing activity log.
     public static var executionLogEnabled: Bool {
         get {

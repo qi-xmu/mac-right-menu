@@ -51,7 +51,7 @@ struct ExtensionsSettingsTab: View {
                         .font(.title3)
                 }
                 .buttonStyle(.borderless)
-                .help("Refresh")
+                .help(String(localized: "Refresh"))
             }
 
             HStack(spacing: 16) {
@@ -70,7 +70,7 @@ struct ExtensionsSettingsTab: View {
                     Circle()
                         .fill(ext.isConnected ? Color.green : Color.orange)
                         .frame(width: 8, height: 8)
-                    Text(ext.isConnected ? "Connected" : "Disconnected")
+                    Text(ext.isConnected ? String(localized: "Connected") : String(localized: "Disconnected"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -140,9 +140,9 @@ struct ExtensionsSettingsTab: View {
 
     private func registrationLabel(_ status: RegistrationStatus) -> String {
         switch status {
-        case .enabled:      return "Enabled"
-        case .disabled:     return "Disabled"
-        case .notInstalled: return "Not Installed"
+        case .enabled:      return String(localized: "Enabled")
+        case .disabled:     return String(localized: "Disabled")
+        case .notInstalled: return String(localized: "Not Installed")
         }
     }
 }

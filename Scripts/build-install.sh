@@ -64,14 +64,19 @@ if [ ! -d "$BUILD_APP" ]; then
 fi
 echo "✅ Build succeeded: $BUILD_APP"
 
-# ── 2. 安装 App ──────────────────────────────────────────
+# ── 2. 杀掉运行中的旧 Container（释放单实例锁 + 端口）──
 INSTALL_APP="$INSTALL_DIR/$APP_NAME.app"
+echo "==> Stopping running Container..."
+killall "$APP_NAME" 2>/dev/null || true
+
+# ── 3. 安装 App ──────────────────────────────────────────
 echo "==> Installing to $INSTALL_DIR..."
 rm -rf "$INSTALL_APP"
 cp -R "$BUILD_APP" "$INSTALL_APP"
 echo "✅ Installed: $INSTALL_APP"
 
-# ── 3. 安装 Finder 扩展 ─────────────────────────────────
+
+# ── 4. 安装 Finder 扩展 ─────────────────────────────────
 EXTENSION_APPEX="$INSTALL_APP/Contents/PlugIns/FinderExtension.appex"
 if [ -d "$EXTENSION_APPEX" ]; then
     echo "==> Installing Finder extension..."
@@ -93,12 +98,12 @@ else
     echo "⚠️  Extension not found at $EXTENSION_APPEX"
 fi
 
-# ── 4. 重启 Finder ──────────────────────────────────────
+# ── 5. 重启 Finder ──────────────────────────────────────
 echo "==> Restarting Finder..."
 killall Finder 2>/dev/null || true
 echo "✅ Finder restarted"
 
-# ── 5. 可选：启动 App ───────────────────────────────────
+# ── 6. 可选：启动 App ───────────────────────────────────
 if [ "$AUTO_RUN" = true ]; then
     echo "==> Launching $APP_NAME..."
     open "$INSTALL_APP"
