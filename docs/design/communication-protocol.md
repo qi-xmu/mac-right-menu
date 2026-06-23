@@ -6,7 +6,7 @@
 
 ## 概述
 
-Extension 和 Container App 之间采用 **JSON-RPC 2.0 over TCP loopback** 通信。Extension（沙盒）通过 `RPCClient` 连接 Container（非沙盒）监听的 `127.0.0.1:57421`，将用户右键意图（`CommandRequest`）发送给 Container 执行。
+Extension 和 Container App 之间采用 **JSON-RPC 2.0 over TCP loopback** 通信。Extension（沙盒）通过 `RPCClient` 连接 Container（非沙盒）监听的 `127.0.0.1:57421`，将用户右键意图（`MenuAction`：actionID + Finder 选中文件）发送给 Container 按 `ActionDefMap` 查表执行。
 
 ### 为什么不用 XPC
 
@@ -19,7 +19,7 @@ Extension 和 Container App 之间采用 **JSON-RPC 2.0 over TCP loopback** 通�
 │                         Container App                       │
 │  ┌─────────────────────┐      ┌──────────────────────────┐ │
 │  │ RPCServer           │      │ AppState                 │ │
-│  │ NWListener          │─────►│ + executeCommand()       │ │
+│  │ NWListener          │─────►│ + executeAction()        │ │
 │  │ 127.0.0.1:57421     │      │   (文件操作，无沙盒)      │ │
 │  │                     │      └──────────────────────────┘ │
 │  │ onCommand 处理请求   │                                    │
@@ -33,7 +33,7 @@ Extension 和 Container App 之间采用 **JSON-RPC 2.0 over TCP loopback** 通�
 │  │ NWConnection        │      │ + menu(for:)             │ │
 │  │ → 127.0.0.1:57421   │      │ + handleMenuAction()     │ │
 │  │                     │─────►│ + rebuildCachedMenu()    │ │
-│  │ executeCommand()    │      │                          │ │
+│  │ executeAction()     │      │                          │ │
 │  │ 自动重连（2s）       │      │ cachedConfig (内存)       │ │
 │  └─────────────────────┘      │ cachedMenu (NSMenu 缓存) │ │
 │                               └──────────────────────────┘ │
@@ -46,8 +46,8 @@ Extension 和 Container App 之间采用 **JSON-RPC 2.0 over TCP loopback** 通�
 |------|------|------|
 | RPC Server | Container App | `RPCServer` 用 `NWListener` 监听 TCP，非沙盒无需额外 entitlement |
 | RPC Client | Extension | `RPCClient` 用 `NWConnection` 连接，需 `network.client` entitlement |
-| 调用方向（请求） | Extension → Container | `executeCommand`（执行指令）、`getConfig`（连接时拉取配置）、`ping`（心跳保活） |
-| 推送方向（通知） | Container → Extension | Container 改配置后广播 `configDidChange` notification |
+| 调用方向（请求） | Extension → Container | `executeAction`（执行动作）、`getConfig`（连接时拉取配置）、`ping`（心跳保活） |
+| 推送方向（通知） | Container → Extension | Container 改配置后广播 `configDidChange` notification（payload 携带 `MenuConfig`） |
 
 Container 做 Server 的理由：
 - Container 生命周期由用户控制（一直在线）→ 监听稳定
@@ -63,12 +63,11 @@ Container 做 Server 的理由：
 {
   "jsonrpc": "2.0",
   "id": 1,
-  "method": "executeCommand",
+  "method": "executeAction",
   "params": {
-    "action": 2,
-    "files": ["/path/to/file"],
-    "command": null,
-    "extra": null
+    "actionID": 2,
+    "targetURL": "file:///Users/qi/Documents",
+    "selectedURLs": ["file:///Users/qi/Documents/test.txt"]
   }
 }
 ```
@@ -87,7 +86,7 @@ Container 做 Server 的理由：
 
 | JSON-RPC | Swift 类型 | 说明 |
 |----------|-----------|------|
-| `params` | `RPCParams` ↔ `CommandRequest` | `action` 用 `CommandRequest.Action.rawValue` |
+| `params` | `RPCActionParams` ↔ `MenuAction` | `actionID` 为整数，Container 通过 `ActionDefMap[actionID]` 查表派发 |
 | `result` | `RPCResult` ↔ `CommandResult` | success + errorDescription |
 
 ### 传输约定
@@ -113,16 +112,16 @@ Container App 启动
     → autoLaunchExtensions()（注册成功后自动拉起 autoLaunch 启用的 Extension）
 
 Extension 被 Finder 唤醒 (init)
-    → cachedConfig = .default（临时值，连接前兜底）
-    → rpcClient.setConfigChangeHandler { 更新 cachedConfig（NSLock） }
+    → cachedConfig = MenuConfig.default（临时值，连接前兜底）
+    → rpcClient.setConfigChangeHandler { 更新 cachedConfig（NSLock）}
     → RPCClient.connect()
     → NWConnection(to: 127.0.0.1:57421, using: .tcp)
     → conn.start()
     → 状态变为 .ready
         → receiveLoop() 开始
-        → fetchConfig() → getConfig 请求 → Container 回当前配置 → 刷新 cachedConfig
+        → fetchConfig() → getConfig 请求 → Container 回当前 `MenuConfig` → 刷新 cachedConfig
         → sendHeartbeat()（立即首 ping）→ startHeartbeat()（1s 快速心跳 → 确认后 15s）
-        → 可调用 executeCommand
+        → 可调用 executeAction
     → 若 Container 未运行，2 秒后自动重试（cachedConfig 暂留 .default）
     → 重试前自动后台拉起 Container（NSWorkspace.openApplication / open -b fallback）
 ```
@@ -131,16 +130,16 @@ Extension 被 Finder 唤醒 (init)
 
 ```
 用户右键 → handleMenuAction(sender, targetURL, selectedURLs)
-    → 根据 tag 构造 CommandRequest
-    → rpcClient.executeCommand(command) { result in
+    → 构造 MenuAction(actionID: sender.tag, targetURL:, selectedURLs:)
+    → rpcClient.executeAction(action) { result in
           logger.notice("[RPC OK] ... → \(result.success ? "OK" : "FAIL")")
       }
 ```
 
 RPCClient 内部：
 1. 分配递增 id，记录 pending 回调
-2. `RPCRequest` 编码为 JSON + `\n`，通过 TCP 发送
-3. Container 的 `RPCServer.handleRequest` 收到后 dispatch
+2. `RPCActionParams`（包装 `MenuAction`）编码为 JSON + `\n`，通过 TCP 发送
+3. Container 的 `RPCServer.handleRequest` 收到后 dispatch → `onAction` 回调 → `AppState.executeAction` 按 `ActionDefMap[actionID]` 查表执行
 4. Container 返回 `RPCResponse`，RPCClient 的 `receiveLoop` 匹配 id 调用回调
 
 ### 3. Container 不在时 Extension 被唤醒（自动拉起）
@@ -156,7 +155,7 @@ Finder 唤醒 Extension (init)
                 → containerLaunchRequested 置位节流（避免 2s 重试 spam）
             → 2 秒后重试 connect()
     → Con 启动 → RPCServer 监听就绪
-    → 下次重试 connect() 成功 → .ready → getConfig + 心跳
+    → 下次重试 connect() 成功 → .ready → getConfig（拉取 `MenuConfig`）+ 心跳
 ```
 
 **自动拉起要点**：
@@ -229,38 +228,38 @@ Container（RPCServer.start 后）
 
 ## 与配置同步的关系
 
-配置（`MenuConfiguration`）的**持久化**仍是各自独立的 `UserDefaults.standard`（App Group 共享 UserDefaults 已实测否决，见 `storage-migration.md`）。两个进程的 store 互不可见，所以配置同步完全走 RPC，分两条通道：
+配置（`AppConfig`，包含 `MenuConfig` 菜单树 + `ActionDefMap` 动作表）的**持久化**仍是各自独立的 `UserDefaults.standard`（App Group 共享 UserDefaults 已实测否决，见 `storage-migration.md`）。两个进程的 store 互不可见，所以配置同步完全走 RPC。Extension 只接收 `menu` 半（`MenuConfig`），`actions` 半（`ActionDefMap`）始终保留在 Container 内，分两条通道：
 
 ### 1. 连接时拉取（getConfig，Extension → Container）
 
-Extension 的 RPCClient 一旦进入 `.ready`，立即发 `getConfig` 请求向 Container 索取当前配置。这是**首次加载**的唯一可靠来源 —— Extension 不再读自己的 store（那个 store 拿不到 Container 的写入）。
+Extension 的 RPCClient 一旦进入 `.ready`，立即发 `getConfig` 请求向 Container 索取当前 `MenuConfig`。这是**首次加载**的唯一可靠来源 —— Extension 不再读自己的 store（那个 store 拿不到 Container 的写入）。
 
 ```
 Extension: RPCClient.connect() → NWConnection .ready
     → fetchConfig()  → 发 getConfig 请求（有 id）
 Container: handleRequest case "getConfig"
-    → 返回 RPCResponse.result.config = 当前 configuration
+    → 返回 RPCResponse.result.config = 当前 MenuConfig（appConfig.menu）
 Extension: pending 回调 → onConfigChange(config) → 更新 cachedConfig（NSLock）
 ```
 
 ### 2. 变更时推送（configDidChange，Container → Extension）
 
-Container 修改配置后主动广播，让**已连接**的 Extension 实时刷新：
+Container 修改配置后主动广播 `MenuConfig`（`appConfig.menu`），让**已连接**的 Extension 实时刷新：
 
 ```
 Container: 用户修改配置
-    → SharedUserDefaults.menuConfiguration = config（写自己的 store）
-    → saveConfiguration() → rpcServer.broadcastConfig(config)
-        → 向所有已连接 Extension 发 configDidChange notification（payload = 完整配置）
+    → SharedUserDefaults.appConfig = config（写自己的 store）
+    → saveConfiguration() → rpcServer.broadcastConfig(config.menu)
+        → 向所有已连接 Extension 发 configDidChange notification（payload = MenuConfig）
 Extension: RPCClient 收到 configDidChange
     → onConfigChange 回调 → 用 NSLock 保护地更新 cachedConfig
 ```
 
-两条通道共用同一个 `onConfigChange` 处理器，`menu(for:)` 加锁读 `cachedConfig` 即可。
+两条通道共用同一个 `onConfigChange` 处理器，`menu(for:)` 加锁读 `cachedMenu` 即可。
 
 ### configDidChange notification（Container → Extension）
 
-JSON-RPC notification（无 `id`，无需响应），payload 携带完整 `MenuConfiguration`（因为各进程 store 独立，必须 in-band 传输）：
+JSON-RPC notification（无 `id`，无需响应），payload 携带 `MenuConfig`（菜单树，非完整 `AppConfig`——`ActionDefMap` 不发 Extension）：
 
 ```json
 {
@@ -268,9 +267,8 @@ JSON-RPC notification（无 `id`，无需响应），payload 携带完整 `MenuC
   "method": "configDidChange",
   "params": {
     "isEnabled": true,
-    "appItems": [...],
-    "actionItems": [...],
-    "newFileTemplates": [...]
+    "showAppIcons": true,
+    "menus": [...]
   }
 }
 ```
@@ -280,13 +278,13 @@ JSON-RPC notification（无 `id`，无需响应），payload 携带完整 `MenuC
 ```json
 // 请求
 { "jsonrpc": "2.0", "id": 1, "method": "getConfig" }
-// 响应（result.config 携带完整配置）
-{ "jsonrpc": "2.0", "id": 1, "result": { "success": true, "errorDescription": null, "config": { ... } } }
+// 响应（result.config 携带 MenuConfig）
+{ "jsonrpc": "2.0", "id": 1, "result": { "success": true, "errorDescription": null, "config": { "isEnabled": true, "showAppIcons": true, "menus": [...] } } }
 ```
 
-RPCClient 的 `handleResponse` 先尝试按 notification 形态解码（有 `method` 无 `id`），命中则触发 config 回调；否则按 response（有 `id`）匹配 pending 请求。getConfig 的响应复用 `RPCResult`，新增可选 `config` 字段。
+RPCClient 的 `handleResponse` 先尝试按 notification 形态解码（有 `method` 无 `id`），命中则触发 config 回调；否则按 response（有 `id`）匹配 pending 请求。getConfig 的响应复用 `RPCResult`，新增可选 `config` 字段（类型为 `MenuConfig`）。
 
-> **边界**：Extension 启动时（RPCClient 尚未连上 Container）`cachedConfig` 是 `.default`。一旦连接建立，getConfig 立即把它刷新为 Container 的真实配置。之后 Container 运行期间的变更由 configDidChange 实时推送。
+> **边界**：Extension 启动时（RPCClient 尚未连上 Container）`cachedConfig` 是 `MenuConfig.default`（空菜单）。一旦连接建立，getConfig 立即把它刷新为 Container 的真实 `MenuConfig`。之后 Container 运行期间的变更由 configDidChange 实时推送。
 
 ## 调试
 
@@ -294,7 +292,7 @@ RPCClient 的 `handleResponse` 先尝试按 notification 形态解码（有 `met
 
 | 日志点 | 标签 | 级别 | 位置 |
 |---|---|---|---|
-| Extension 发起调用 | `[Ext][RPC CALL]` | notice | `RPCClient.executeCommand` / `fetchConfig` |
+| Extension 发起调用 | `[Ext][RPC CALL]` | notice | `RPCClient.executeAction` / `fetchConfig` |
 | 任意发送（两端共享） | `[Con/Ext][RPC SEND]` | debug | `sendJSON` |
 | 任意接收（两端共享） | `[Con/Ext][RPC RECV]` | debug | `RPCServer.handleRequest` / `RPCClient.handleResponse` |
 | Con 监听就绪 | `[Con] RPCServer: listening on ...` | notice | `RPCServer.start` |
@@ -310,7 +308,7 @@ RPCClient 的 `handleResponse` 先尝试按 notification 形态解码（有 `met
 | Ext 拉起 Con | `[Ext] RPCClient: Container not reachable — requesting launch` / `Container launch requested` | notice | `RPCClient.launchContainerIfNeeded` |
 | Ext 配置写入缓存 | `[Ext] Config applied:` | notice | `FinderSync`（onConfigChange 回调） |
 | Ext 缓存菜单重建 | `[Ext] Cached menu rebuilt (N top-level items)` | notice | `FinderSync.rebuildCachedMenu` |
-| Con 收到指令并派发执行 | `[Con][RPC RECV→DISPATCH]` | notice | `AppState.executeCommand`（commandLogOnly 短路路径） |
+| Con 收到指令并派发执行 | `[Con][RPC RECV→DISPATCH]` | notice | `AppState.executeAction`（`onAction` 回调） |
 | Con 检测到 Ext 注册 | `[Con] Extension registered via pluginkit (system-level; not yet RPC-connected)` | notice | `AppState.checkExtensionRegistration` |
 
 > 注：`[RPC RECV→DISPATCH]` 标签与 `[RPC RECV]` 含义有区分：前者表示 Container 收到 RPC 请求后进入 dispatch/执行，后者是原始接收日志。
@@ -338,14 +336,14 @@ log stream --debug --predicate 'subsystem == "com.qi-xmu.mac-right-menu.FinderEx
 |------|------|
 | `Shared/RPC/RPCSession.swift` | `RPCServer` + `RPCClient` + JSON-RPC wire types |
 | `Shared/Constants.swift` | `rpcHost` / `rpcPort` / 心跳参数 / `knownExtensions` / `containerLockURL` |
-| `Shared/Models/CommandRequest.swift` | 指令模型（`Action` enum 的 rawValue 用于 RPC params） |
+| `Shared/Models/MenuAction.swift` | Extension → Container 的点击载荷（`actionID` + `targetURL` + `selectedURLs`） |
 | `Shared/RPC/CommandResult.swift` | 返回结果模型 |
 | `Shared/Models/ExtensionInfo.swift` | Extension 状态模型（enabled/connected/autoLaunch） |
 | `Shared/Models/DebugLogEntry.swift` | 调试日志条目 + `RPCActivity` 描述符 |
 | `Shared/Preferences/SharedUserDefaults.swift` | 各进程独立 UserDefaults 存储 + Extension 偏好 |
-| `mac-right-menu/ViewModels/AppState.swift` | Container 持有 `RPCServer`，实现 `executeCommand`，自动拉起 Extension |
-| `FinderExtension/FinderSync.swift` | Extension 持有 `RPCClient`，自动拉起 Container |
-| `FinderExtension/MenuActionHandler.swift` | 菜单点击 → `rpcClient.executeCommand` |
+| `mac-right-menu/ViewModels/AppState.swift` | Container 持有 `RPCServer`，实现 `executeAction`（按 `ActionDefMap` 查表），自动拉起 Extension |
+| `FinderExtension/FinderSync.swift` | Extension 持有 `RPCClient`，`handleMenuAction` 构造 `MenuAction` 发送，自动拉起 Container |
+| `FinderExtension/MenuBuilder.swift` | 结构无关的通用菜单渲染器（递归 `MenuItem` 树 → `NSMenu`） |
 
 ## 风险与缓解
 
@@ -355,7 +353,7 @@ log stream --debug --predicate 'subsystem == "com.qi-xmu.mac-right-menu.FinderEx
 | Extension 崩溃/被杀，Container 未感知 | 低 | Con→Ext 心跳定时检测每个连接的 lastPong；超时后自动标记断连并调用 `pluginkit -e use` 重新拉起（autoLaunch 启用时） |
 | 固定端口 57421 被占用 | 低 | 当前未处理；可后续改为动态端口 + 文件传递 |
 | TCP 传输无加密 | 低 | loopback 流量不出本机，风险可接受 |
-| Container 改配置时 Extension 未连上 → 推送丢失 | 低 | Extension 下次 RPC 连接 `.ready` 时经 `getConfig` 拉取最新配置；连接前 `cachedConfig` 暂为 `.default` |
+| Container 改配置时 Extension 未连上 → 推送丢失 | 低 | Extension 下次 RPC 连接 `.ready` 时经 `getConfig` 拉取最新 `MenuConfig`；连接前 `cachedConfig` 暂为 `.default` |
 | flock 锁文件残留（Container 异常退出） | 低 | flock(fd) 在进程退出时自动释放；`isContainerProcessAlive()` 通过 `kill(pid, 0)` 校验 PID 存活再判断 |
 
 ## 考虑点
@@ -367,5 +365,5 @@ log stream --debug --predicate 'subsystem == "com.qi-xmu.mac-right-menu.FinderEx
 ### 性能
 
 - RPC 调用本身异步，不阻塞 Extension 的 `menu(for:)` 返回（菜单渲染与命令执行解耦）。
-- `executeCommand` 为 `async`，返回**真实执行结果**（`CommandResult`，含成功/失败 + `errorDescription`）。RPC 响应延迟到执行完成后才发送 —— 这是相对早期 "fire-and-forget" 行为的演进，使 Extension 能感知命令失败，且 Container 端 Execution Log 记录的结果与 Extension 收到的响应一致。
-- `.shell` 动作内部 `waitUntilExit()` 会同步阻塞 RPC 连接的处理协程（运行在 RPC 后台队列，**不阻塞主线程 / UI**）。期间 Extension 对应的 `executeCommand` 回调会等待。
+- `executeAction` 为 `async`，返回**真实执行结果**（`CommandResult`，含成功/失败 + `errorDescription`）。RPC 响应延迟到执行完成后才发送 —— 这是相对早期 "fire-and-forget" 行为的演进，使 Extension 能感知命令失败，且 Container 端 Execution Log 记录的结果与 Extension 收到的响应一致。
+- `executeAction` 是 `nonisolated` 的，通过 `await MainActor.run` 安全读取 `appConfig`（`ActionDefMap` 查表），执行本身在 RPC 后台队列（**不阻塞主线程 / UI**）。

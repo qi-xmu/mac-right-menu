@@ -61,7 +61,7 @@ mac-right-menu.app
 | ✅ **JSON-RPC 2.0 over TCP loopback** | 中 | 低 | 沙盒下 `network.client` 可达（已验证） | ⭐ 选用 |
 
 最终选择 **JSON-RPC over TCP**：Extension 通过 `RPCClient` 连接 Container 的 `RPCServer`（`127.0.0.1:57421`），
-将用户右键意图（`CommandRequest`）以 JSON-RPC 发送给 Container 执行。
+将用户右键意图（`MenuAction`：actionID + 选中文件）以 JSON-RPC 发送给 Container 按 `ActionDefMap` 查表执行。
 
 详见 `docs/design/communication-protocol.md`、`docs/design/xpc-architecture.md`。
 

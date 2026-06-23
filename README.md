@@ -49,15 +49,16 @@ macOS Finder 右键菜单扩展<br/>
 │                              │                          │                      │
 │  AppState (MainActor)        │   heartbeat ping/pong    │  FIFinderSync        │
 │  RPCServer                   │  ◄────────────────────►  │  RPCClient           │
-│  MenuConfiguration           │   configDidChange push   │  MenuBuilder         │
-│  SharedUserDefaults          │   getConfig pull         │  MenuActionHandler   │
+│  AppConfig (MenuConfig       │   configDidChange push   │  MenuBuilder         │
+│    + ActionDefMap)           │   getConfig pull         │                      │
+│  SharedUserDefaults          │                          │                      │
 └──────────────────────────────┘                          └──────────────────────┘
 ```
 
 ### 通信模型
 
-- **Extension → Container**: 右键点击 → `MenuActionHandler` 序列化为 `CommandRequest` → RPC 调用 → Container 执行
-- **Container → Extension**: 设置变更 → `broadcastConfig()` 推送 `configDidChange` → Extension 重建菜单
+- **Extension → Container**: 右键点击 → `FinderSync.handleMenuAction` 构造 `MenuAction`（actionID + 选中文件） → RPC 调用 → Container 按 `ActionDefMap[actionID]` 查表执行
+- **Container → Extension**: 设置变更 → `broadcastConfig()` 推送 `configDidChange`（携带 `MenuConfig` 菜单树） → Extension 重建菜单
 - **心跳**: Container 周期性 ping → Extension 回 pong → 超时检测断连 → 自动重连/唤醒
 - **自动拉起**: Extension 检测到 Container 未运行时自动后台启动；Container 启动时通过 `pluginkit` 唤醒 Extension
 
@@ -65,11 +66,19 @@ macOS Finder 右键菜单扩展<br/>
 
 ```
 menu(for:)                    ← Finder 每次右键调用
-  ├─ 有缓存? → refreshSelectionState (轻量: 仅切换 isHidden/isEnabled)
-  └─ 无缓存 → buildMenu() (构建完整 NSMenu)
-                ├─ New File 子菜单 (tag 0–999)
-                ├─ Open With 子菜单 (tag 1000–1999)
-                └─ 操作项 (tag 2000–2999)
+  ├─ 有缓存? → refreshSelectionState (轻量: 按 showCondition/multiItemSupport 切换 isHidden/isEnabled)
+  └─ 无缓存 → MenuBuilder.buildMenu() (递归渲染 MenuItem 树 → NSMenu)
+                └─ 每个叶子携带 actionID → Container 按 ActionDefMap 查表执行
+```
+
+### 数据模型（两层分离）
+
+```
+AppConfig
+├── MenuConfig (菜单树)    → 推送给 Extension 渲染
+│   └── [MenuItem] 递归树    每个叶子有 actionID
+└── ActionDefMap (动作表)   → 仅 Container 持有，查表执行
+    └── [Int: ActionDef]     newFile / openWith / general / custom
 ```
 
 ### 图标渲染优化
@@ -116,13 +125,13 @@ xcodebuild -scheme "mac-right-menu" -project mac-right-menu.xcodeproj build
 ```
 mac-right-menu/
 ├── Shared/                          # Container & Extension 共享代码
-│   ├── Constants.swift              # Bundle IDs, RPC 端口, Tag 定义
-│   ├── Models/                      # MenuItem, CommandRequest, ExtensionInfo…
-│   ├── Preferences/                 # MenuConfiguration, SharedUserDefaults
+│   ├── Constants.swift              # Bundle IDs, RPC 端口, TagBase 定义
+│   ├── Models/                      # MenuConfig, MenuAction, ActionDef, AppConfig, ExtensionInfo…
+│   ├── Preferences/                 # SharedUserDefaults
 │   ├── Permissions/                 # FullDiskAccess 检测
-│   └── RPC/                         # RPCSession (Server + Client)
+│   └── RPC/                         # RPCSession (Server + Client), CommandResult
 ├── mac-right-menu/                  # Container App
-│   ├── ViewModels/AppState.swift    # 核心状态管理 (MainActor)
+│   ├── ViewModels/AppState.swift    # 核心状态管理 (MainActor), 持有 ActionDefMap
 │   └── Views/                       # 设置窗口 (NavigationSplitView)
 │       ├── SettingsView.swift       # 侧栏导航入口
 │       ├── GeneralSettingsTab.swift
@@ -133,9 +142,8 @@ mac-right-menu/
 │       ├── ExecutionLogView.swift
 │       └── DebugLogView.swift
 ├── FinderExtension/                 # Finder Sync Extension
-│   ├── FinderSync.swift             # FIFinderSync 入口 + 菜单缓存
-│   ├── MenuBuilder.swift            # NSMenu 构建 + 图标缓存
-│   └── MenuActionHandler.swift      # 点击分发 → RPC 调用
+│   ├── FinderSync.swift             # FIFinderSync 入口 + 菜单缓存 + 点击转发
+│   └── MenuBuilder.swift            # 结构无关的通用 NSMenu 渲染器 + 图标缓存
 └── docs/                            # 设计文档
 ```
 

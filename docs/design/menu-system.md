@@ -1,12 +1,12 @@
 # 菜单系统设计
 
 > 日期: 2026-06-08（初版）
-> 更新: 2026-06-17（菜单缓存 + 图标缓存 + 容器上下文支持 + 外观切换感知；配置同步：连接时 getConfig 拉取 + RPC configDidChange 实时推送；不再读各自 store）
+> 更新: 2026-06-23（同步菜单树重构：MenuConfiguration → AppConfig/MenuConfig + ActionDefMap；CommandRequest → MenuAction；MenuActionHandler 已移除）
 > 状态: 已实现
 
 ## 概述
 
-mac-right-menu 的右键菜单由 Container App（设置 UI）配置，Finder Extension 负责在 Finder 中渲染。两端 `UserDefaults.standard` 隔离（App Group 共享已否决），所以 Extension 不读自己的 store —— 配置经 RPC 同步：连接时 `getConfig` 拉取，运行期间 `configDidChange` 推送，缓存到 Extension 内存。
+mac-right-menu 的右键菜单由 Container App（设置 UI）配置，Finder Extension 负责在 Finder 中渲染。两端 `UserDefaults.standard` 隔离（App Group 共享已否决），所以 Extension 不读自己的 store —— 配置经 RPC 同步：连接时 `getConfig` 拉取 `MenuConfig`，运行期间 `configDidChange` 推送，缓存到 Extension 内存。Container 持有完整 `AppConfig`（`MenuConfig` + `ActionDefMap`），只把 `menu` 半推给 Extension；`actions` 半始终在 Container 内，点击时按 `actionID` 查表执行。
 
 ## 架构
 
@@ -14,7 +14,7 @@ mac-right-menu 的右键菜单由 Container App（设置 UI）配置，Finder Ex
 ┌───────────────────────┐          ┌──────────────────────────────────────┐
 │     Container App      │          │        Finder Extension              │
 │                        │          │                                      │
-│  Settings UI           │          │  cachedConfig: MenuConfiguration     │
+│  Settings UI           │          │  cachedConfig: MenuConfig        │
 │     │                  │ 持久化    │     │  (初始 .default)              │
 │     ▼                  │ (各自     │     ├── rebuildCachedMenu()        │
 │  saveConfiguration()   │  独立     │     │   → 构建完整 NSMenu 缓存       │
@@ -22,12 +22,13 @@ mac-right-menu 的右键菜单由 Container App（设置 UI）配置，Finder Ex
 │     │   Defaults       │          │     │                                │
 │     └── broadcastConfig│ getConfig │     ├── menu(for:)                 │
 │         (configDidChange)│ ←─────►│     │   → 读 cachedMenu (NSLock)    │
+│         pushes MenuConfig │       │     │   → refreshSelectionState()    │
 └───────────────────────┘          │     │   → refreshSelectionState()    │
                                    │     │   → 低成本按点击刷新选中状态     │
                                    │     │                                │
                                    │     └── handleMenuAction()          │
                                    │          → configLock 加锁读配置      │
-                                   │          → CommandRequest → RPC      │
+                                   │          → MenuAction → RPC          │
                                    └──────────────────────────────────────┘
 ```
 
@@ -49,7 +50,7 @@ mac-right-menu 的右键菜单由 Container App（设置 UI）配置，Finder Ex
 │                                                             │
 │  cachedMenu: NSMenu?    ← 完整菜单对象（配置变更时重建）     │
 │  menuLock: NSLock       ← 保护 cachedMenu 读写              │
-│  cachedConfig: MenuConfiguration  ← 配置快照（configLock）   │
+│  cachedConfig: MenuConfig  ← 配置快照（configLock）         │
 │  configLock: NSLock     ← 保护 cachedConfig 读写            │
 └─────────────────────────┬───────────────────────────────────┘
                           │ rebuildCachedMenu()
@@ -103,47 +104,48 @@ DistributedNotificationCenter.default().addObserver(
 
 ### 存储：各自独立的 UserDefaults
 
-Container App 和 Extension 各自维护自己的 `UserDefaults.standard` store（**非 App Group 共享**）。`SharedUserDefaults` 封装了对该 store 的读写。Container 用它持久化配置；Extension **不读自己的 store**（两端隔离，读到的不是 Container 的配置），配置完全经 RPC 获取。
+Container App 和 Extension 各自维护自己的 `UserDefaults.standard` store（**非 App Group 共享**）。`SharedUserDefaults` 封装了对该 store 的读写。Container 用它持久化 `AppConfig`（`menu` + `actions`）；Extension **不读自己的 store**（两端隔离，读到的不是 Container 的配置），配置完全经 RPC 获取 `MenuConfig`。
 
 ```swift
 // Container App — 持久化到自己的 store
-SharedUserDefaults.menuConfiguration = config
+SharedUserDefaults.appConfig = config   // AppConfig (MenuConfig + ActionDefMap)
 
-// Extension — cachedConfig 初始为 .default，RPC 连接后由 getConfig/configDidChange 刷新
-private var cachedConfig: MenuConfiguration = .default   // 连接前临时值
+// Extension — cachedConfig 初始为 MenuConfig.default，RPC 连接后由 getConfig/configDidChange 刷新
+private var cachedConfig: MenuConfig = .default   // 连接前临时值
 private let configLock = NSLock()
 ```
 
 ### 同步策略：连接时拉取 + RPC 实时推送 + 菜单重建
 
-Extension 不读自己的 store（两端 store 隔离，读到的不是 Container 的配置）。配置完全经 RPC 同步，两条通道共用同一个 `onConfigChange` 处理器：
+Extension 不读自己的 store（两端 store 隔离，读到的不是 Container 的配置）。`MenuConfig` 完全经 RPC 同步，两条通道共用同一个 `onConfigChange` 处理器：
 
 ```
 Extension: init()
-    → cachedConfig = .default（临时值，连接前兜底）
+    → cachedConfig = MenuConfig.default（临时值，连接前兜底）
     → rpcClient.setConfigChangeHandler { newConfig in
           configLock.lock(); cachedConfig = newConfig; configLock.unlock()
           rebuildCachedMenu()   // 配置变更后重建完整菜单缓存
       }
     → rpcClient.connect()
-        → .ready → fetchConfig() → getConfig 请求 → Container 回当前配置 → onConfigChange → rebuildCachedMenu()
+        → .ready → fetchConfig() → getConfig 请求 → Container 回当前 MenuConfig → onConfigChange → rebuildCachedMenu()
 
 Container 改配置: saveConfiguration()
-    → rpcServer.broadcastConfig(config)
+    → rpcServer.broadcastConfig(config.menu)  // 只推送 MenuConfig，ActionDefMap 不发 Extension
     → 已连接 Extension 收到 configDidChange → onConfigChange（NSLock 保护）→ rebuildCachedMenu()
 
 menu(for:): 加锁读 cachedMenu 快照    // 零 I/O、零图像解码
     → refreshSelectionState()          // 仅更新 isHidden / isEnabled
 ```
 
-> **实时性**：Extension 一旦 RPC 连上，立即经 `getConfig` 拿到 Container 当前配置并重建菜单缓存；之后 Container 运行期间的变更由 `configDidChange` 实时推送，下次右键即生效。
-> **边界**：RPC 连接建立前 `cachedConfig` 是 `.default`（此时右键只显示默认菜单）。连接建立后立即刷新为真实配置并重建缓存。
+> **实时性**：Extension 一旦 RPC 连上，立即经 `getConfig` 拿到 Container 当前 `MenuConfig` 并重建菜单缓存；之后 Container 运行期间的变更由 `configDidChange` 实时推送，下次右键即生效。
+> **边界**：RPC 连接建立前 `cachedConfig` 是 `MenuConfig.default`（空菜单）。连接建立后立即刷新为真实配置并重建缓存。
+> **动作执行**：Extension 不持有 `ActionDefMap`，点击时只发 `actionID` 给 Container；Container 按 `ActionDefMap[actionID]` 查表执行。configDidChange 推送的也是 `MenuConfig`（菜单树），不含动作定义。
 
 ### Extension 端使用
 
 ```swift
 // FinderSync.swift
-private var cachedConfig: MenuConfiguration = .default
+private var cachedConfig: MenuConfig = .default
 private var cachedMenu: NSMenu?
 private let menuLock = NSLock()
 
@@ -152,28 +154,25 @@ override func menu(for menuKind: FIMenuKind) -> NSMenu {
     guard menuKind == .contextualMenuForItems || menuKind == .contextualMenuForContainer
     else { return NSMenu() }
 
-    let hasSelection = FIFinderSyncController.default().selectedItemURLs()?.isEmpty == false
-
     menuLock.lock()
     let menu = cachedMenu
     menuLock.unlock()
 
     guard let menu else {
         // 兜底：缓存未就绪（等待首次 getConfig），用默认配置构建
-        return MenuBuilder.buildMenu(configuration: .default, ...)
+        return MenuBuilder.buildMenu(config: .default, ...)
     }
 
     // 低成本按点击刷新：仅更新选中相关菜单项的显隐/启用状态
-    MenuBuilder.refreshSelectionState(menu, hasSelection: hasSelection)
+    let context = /* classify selection as .file or .dir */
+    MenuBuilder.refreshSelectionState(menu, context: context, selectedCount: ...)
     return menu
 }
 
 @objc func handleMenuAction(_ sender: NSMenuItem) {
-    // configLock 加锁读 cachedConfig 快照，确保线程安全
-    configLock.lock()
-    let config = cachedConfig
-    configLock.unlock()
-    MenuActionHandler.handleMenuAction(sender, ..., config: config, client: rpcClient)
+    // actionID 直接从 tag 获取，不再解析 tag 语义
+    let action = MenuAction(actionID: sender.tag, targetURL: targetURL, selectedURLs: selectedURLs)
+    rpcClient.executeAction(action) { result in ... }
 }
 ```
 
@@ -181,59 +180,60 @@ override func menu(for menuKind: FIMenuKind) -> NSMenu {
 
 ### 上下文类型
 
-| FIMenuKind | 场景 | hasSelection | 菜单行为 |
-|------------|------|-------------|----------|
-| `.contextualMenuForItems` | 右键选中的文件/文件夹 | `true` | 完整菜单（新建文件 + Open With + 操作） |
-| `.contextualMenuForContainer` | 右键文件夹空白区域 | `false` | 仅显示 New File（Open With 和操作被隐藏） |
+| FIMenuKind | 场景 | context | 菜单行为 |
+|------------|------|---------|----------|
+| `.contextualMenuForItems` | 右键选中的文件/文件夹 | `.file` 或 `.dir`（取决于选中项类型） | 完整菜单（新建文件 + Open With + 操作） |
+| `.contextualMenuForContainer` | 右键文件夹空白区域 | `.dir` | 仅显示 showCondition 为 `.isDir` 或 `.both` 的项 |
 | 其他（sidebar/toolbar/window） | 不相关 | — | 返回空菜单 |
 
 ### 菜单结构
 
+菜单结构完全由 `MenuConfig`（递归 `MenuItem` 树）驱动。`MenuBuilder` 是结构无关的通用渲染器——它不知道什么是"新建文件"或"打开方式"，只把树渲染成 `NSMenu`。每个叶子节点携带 `actionID`，Container 通过 `ActionDefMap[actionID]` 查表执行。
+
+默认种子配置（`AppConfig.default`）的布局：
+
 ```
 mac-right-menu
-├─ 新建文件 (New File)          ← 子菜单，列出模板（始终显示）
-│   ├─ 未命名.txt
-│   ├─ 未命名.md
+├─ 新建文件 (New File)          ← 子菜单头，showCondition=.isDir
+│   ├─ 未命名.txt               ← actionID 0
+│   ├─ 未命名.md                ← actionID 1
 │   └─ ...
-├─ Open With                    ← 单 item 或子菜单（仅选中文件时显示）
-│   ├─ VS Code
-│   ├─ Zed
+├─ Open With                    ← 子菜单头，showCondition=.both
+│   ├─ Terminal                 ← actionID 1000
+│   ├─ VS Code                  ← actionID 1001
 │   └─ ...
-└─ 操作                         ← 仅选中文件时显示
-    ├─ 复制路径 (Copy Path)
-    ├─ 复制文件名 (Copy File Name)
-    └─ 切换隐藏 (Toggle Hidden)
+├─ Copy Path                    ← 叶子，actionID 2000
+├─ Copy File Name               ← 叶子，actionID 2001
+└─ Toggle Hidden                ← 叶子，actionID 2002
 ```
 
-分组顺序固定：新建文件 → Open With → 通用操作。
+每个 `MenuItem` 携带 `showCondition`（`.isFile`/`.isDir`/`.both`）和 `multiItemSupport` 元数据。`refreshSelectionState` 遍历顶层菜单项，根据当前 `TargetContext` 和选中数量，用这些元数据决定 `isHidden`/`isEnabled`。
 
-- **New File**：在两种上下文都构建，`refreshSelectionState` 不改变其显隐
-- **Open With**：构建时 `isEnabled = hasSelection`；容器上下文中 `refreshSelectionState` 将其隐藏
-- **操作**：同 Open With，容器上下文中被隐藏
+- **showCondition `.isDir`**（如 New File）：仅在文件夹上下文（选中文件夹或空白处）显示
+- **showCondition `.both`**（如 Open With、Copy Path）：文件和文件夹上下文都显示
+- **showCondition `.isFile`**：仅在选中文件时显示
 
 ### refreshSelectionState 机制
 
-`menu(for:)` 每次右键时调用 `refreshSelectionState(menu, hasSelection:)`，仅更新依赖选中状态的属性：
+`menu(for:)` 每次右键时调用 `MenuBuilder.refreshSelectionState(menu, context:, selectedCount:)`，仅更新依赖选中状态的属性：
 
 ```swift
-static func refreshSelectionState(_ menu: NSMenu, hasSelection: Bool) {
+static func refreshSelectionState(_ menu: NSMenu, context: TargetContext, selectedCount: Int) {
     for item in menu.items {
-        let tag = item.tag
-        if tag >= Constants.TagBase.appItem.rawValue && tag < Constants.TagBase.shell.rawValue {
-            // Open With (1000–1999)
-            item.isHidden = !hasSelection
-            item.isEnabled = hasSelection
-        } else if tag >= Constants.TagBase.copyPath.rawValue && tag < Constants.TagBase.shell.rawValue {
-            // 操作 (2000–2999)
-            item.isHidden = !hasSelection
-            item.isEnabled = hasSelection
+        guard let meta = item.representedObject as? NodeMeta else { continue }
+        let condOK: Bool = switch meta.showCondition {
+            case .isFile: context == .file
+            case .isDir:  context == .dir
+            case .both:   true
         }
-        // New File (0–999) 不变
+        let multiOK = meta.multiItemSupport || selectedCount <= 1
+        item.isHidden = !(condOK && multiOK)
+        item.isEnabled = condOK && multiOK
     }
 }
 ```
 
-**开销**：仅遍历顶层菜单项（通常 < 10 项），每项做两次属性写入。比每次重建整个 NSMenu 树（图像解码 + 位图光栅化）快 100x+。
+**开销**：仅遍历顶层菜单项（通常 < 10 项），每项读 `representedObject` 做两次属性写入。比每次重建整个 NSMenu 树（图像解码 + 位图光栅化）快 100x+。
 
 ## 图标缓存
 
@@ -268,25 +268,22 @@ nonisolated(unsafe) private static var appIconCache: [String: NSImage] = [:]
 
 ## 分发编码
 
-菜单项点击通过 `NSMenuItem.tag` 分发，避免字符串比较：
+菜单项点击通过 `NSMenuItem.tag` 携带 `actionID`。Extension 不解释 actionID 的语义——它直接把 tag 值通过 `MenuAction` 发给 Container，Container 按 `ActionDefMap[actionID]` 查表执行：
 
 ```
-tag 范围       操作                      示例
-───────       ────                      ────
-0–999         新建文件模板               tag = 0 + templateIndex
-1000–1999     Open With App             tag = 1000 + appIndex
-2000–2999     通用操作                   tag = 2000 + offset
-              ├─ 2000  copyPath
-              ├─ 2001  copyFileName
-              └─ 2002  toggleHidden
-4000–4999     自定义命令 (shell)         tag = 4000 + shellIndex（未实现）
+actionID 范围   ActionDef 类型              来源
+───────────    ─────────────              ────
+0–999          .newFile(template:)        AppConfig.default 种子 + 用户自定义
+1000–1999      .openWith(app:)            用户在 Settings > Apps 添加
+2000–2999      .general(operation:)       固定：2000=copyPath, 2001=copyFileName, 2002=toggleHidden
+4000–4999      .custom(command:)          预留（未实现）
 ```
 
 ### 编码原则
 
-1. **按菜单顺序排列**：tag 范围顺序 = 菜单分组顺序
-2. **同组紧凑**：操作标签连续编码，不做千位跳跃
-3. **区间判断**：`MenuActionHandler` 对每个 tag 做上下界检查，防止无限吞 tag
+1. **叶子节点携带真实 actionID**：子菜单头的 `actionID` 不被派发（渲染器不给非叶子节点设 action selector）
+2. **按类型分段**：`Constants.TagBase` 定义区间起点，区间内递增
+3. **Container 查表派发**：`ActionDefMap[actionID]` 一次字典查找，miss 记日志忽略
 
 ## 性能分析
 
@@ -302,11 +299,11 @@ tag 范围       操作                      示例
 
 ## 配置读取策略：连接时拉取 + 内存缓存 + RPC 推送
 
-Extension 不读自己的 store（两端隔离），`cachedConfig` 初始为 `.default`，RPC 连接 `.ready` 时经 `getConfig` 拉取 Container 当前配置，运行期间经 `configDidChange` 推送刷新。每次配置变更触发 `rebuildCachedMenu()`。`menu(for:)` 读 `cachedMenu`（加锁）。
+Extension 不读自己的 store（两端隔离），`cachedConfig` 初始为 `MenuConfig.default`（空菜单），RPC 连接 `.ready` 时经 `getConfig` 拉取 Container 当前 `MenuConfig`，运行期间经 `configDidChange` 推送刷新。每次配置变更触发 `rebuildCachedMenu()`。`menu(for:)` 读 `cachedMenu`（加锁）。
 
 ```
 Extension: init()
-    → cachedConfig = .default（临时值）
+    → cachedConfig = MenuConfig.default（临时值）
     → rpcClient.setConfigChangeHandler { 更新 cachedConfig（NSLock）→ rebuildCachedMenu() }
     → rpcClient.connect() → .ready → fetchConfig() → 刷新 cachedConfig → rebuildCachedMenu()
 
@@ -327,12 +324,13 @@ menu(for:): 加锁读 cachedMenu    // 零 I/O、零解码、零图像渲染
 
 | 文件 | 职责 |
 |------|------|
-| `FinderExtension/FinderSync.swift` | Extension 入口：菜单缓存管理、configChangeHandler、rebuildCachedMenu()、menu(for:) |
-| `FinderExtension/MenuBuilder.swift` | NSMenu 构建、图标缓存 (symbolCache/appIconCache)、refreshSelectionState() |
-| `FinderExtension/MenuActionHandler.swift` | 菜单点击 → CommandRequest，通过 `RPCClient` 发送 |
-| `Shared/Preferences/MenuConfiguration.swift` | 菜单配置数据模型 |
-| `Shared/Preferences/SharedUserDefaults.swift` | UserDefaults 读写封装（各自独立 store） |
-| `Shared/Constants.swift` | tag 编码常量 + RPC 端口常量 |
-| `Shared/Models/CommandRequest.swift` | RPC 指令结构（Codable，RPC 层用 `RPCParams` 包装） |
+| `FinderExtension/FinderSync.swift` | Extension 入口：菜单缓存管理、configChangeHandler、rebuildCachedMenu()、menu(for:)、handleMenuAction() 构造 `MenuAction` 发送 |
+| `FinderExtension/MenuBuilder.swift` | 结构无关的通用 NSMenu 构建器（递归 `MenuItem` 树）、图标缓存 (symbolCache/appIconCache)、refreshSelectionState() |
+| `Shared/Models/MenuConfig.swift` | 菜单配置数据模型（`MenuConfig` + `MenuItem` 树 + `ShowCondition` + `MenuIcon`） |
+| `Shared/Models/AppConfig.swift` | 持久化根（`AppConfig` = `MenuConfig` + `ActionDefMap`） |
+| `Shared/Models/ActionDef.swift` | 动作定义（`ActionDef` 枚举 + `ActionDefMap` + `GeneralOperation`） |
+| `Shared/Models/MenuAction.swift` | Extension → Container 的点击载荷（`actionID` + `targetURL` + `selectedURLs`） |
+| `Shared/Preferences/SharedUserDefaults.swift` | UserDefaults 读写封装（各自独立 store，`appConfig` 键） |
+| `Shared/Constants.swift` | actionID 编码常量 (`TagBase`) + RPC 端口常量 |
 | `Shared/RPC/RPCSession.swift` | JSON-RPC over TCP（RPCServer + RPCClient） |
-| `mac-right-menu/ViewModels/AppState.swift` | Container App 状态管理，持有 `RPCServer`，实现 `executeCommand` |
+| `mac-right-menu/ViewModels/AppState.swift` | Container App 状态管理，持有 `RPCServer` + `ActionDefMap`，实现 `executeAction` 查表派发 |

@@ -12,7 +12,7 @@
 │  ─────                                               │
 │  rpcServer (Container)       rpcClient (Extension)   │
 │  server.start()              client.connect()        │
-│  server.stop()               client.executeCommand() │
+│  server.stop()               client.executeAction()   │
 └───────────┬──────────────────────┬──────────────────┘
             │                      │
 ┌───────────▼──────────────────────▼──────────────────┐
@@ -40,12 +40,11 @@
 {
   "jsonrpc": "2.0",
   "id": 1,
-  "method": "executeCommand",
+  "method": "executeAction",
   "params": {
-    "action": 2,
-    "files": ["/path/to/file"],
-    "command": null,
-    "extra": null
+    "actionID": 2,
+    "targetURL": "file:///Users/qi/Documents",
+    "selectedURLs": ["file:///Users/qi/Documents/test.txt"]
   }
 }
 ```
@@ -64,7 +63,7 @@
 
 | JSON-RPC | Swift 类型 |
 |----------|-----------|
-| `params` | `RPCParams` ↔ `CommandRequest`（action 用 `CommandRequest.Action.rawValue`） |
+| `params` | `RPCActionParams` ↔ `MenuAction`（`actionID` 为整数，Container 通过 `ActionDefMap` 查表） |
 | `result` | `RPCResult` ↔ `CommandResult` |
 
 ## 数据流
@@ -73,12 +72,12 @@
 
 ```
 Finder 右键菜单点击
-  → MenuActionHandler.handleMenuAction(...)
-    → RPCClient.executeCommand(command)
+  → FinderSync.handleMenuAction(...)
+    → RPCClient.executeAction(MenuAction)
       → TCP 发送 JSON-RPC request
         → RPCServer.handleRequest()
-          → RPCServer.onCommand(command)
-            → AppState.executeCommand()
+          → RPCServer.onAction(action)
+            → AppState.executeAction()
           → TCP 返回 JSON-RPC response
     → 回调打印 [RPC OK] / [RPC DOWN]
 ```
@@ -87,18 +86,18 @@ Finder 右键菜单点击
 
 ```
 Container 修改设置
-  → SharedUserDefaults.menuConfiguration = config
+  → SharedUserDefaults.appConfig = config
   → 写入 Container 自己的 UserDefaults
-  → rpcServer.broadcastConfig(config)（configDidChange 推送）
+  → rpcServer.broadcastConfig(config.menu)（configDidChange 推送 MenuConfig）
 
 Extension
-  → cachedConfig 初始为 .default
-  → RPC 连接 .ready → getConfig 拉取 Container 当前配置
+  → cachedConfig 初始为 MenuConfig.default
+  → RPC 连接 .ready → getConfig 拉取 Container 当前 MenuConfig
   → 运行期间收到 configDidChange → 刷新 cachedConfig
 ```
 
 > 注意：两个进程的 UserDefaults 是各自独立的（非 App Group 共享）。
-> 配置同步完全走 RPC：连接时 `getConfig` 拉取 + 运行期间 `configDidChange` 推送（payload 携带完整 `MenuConfiguration`），详见 `communication-protocol.md`。
+> 配置同步完全走 RPC：连接时 `getConfig` 拉取 + 运行期间 `configDidChange` 推送（payload 携带 `MenuConfig` 菜单树，`ActionDefMap` 不发 Extension），详见 `communication-protocol.md`。
 
 ## Entitlements
 
@@ -124,8 +123,8 @@ Extension
 |------|------|
 | `Shared/RPC/RPCSession.swift` | IPC 通信模块（RPCServer + RPCClient + JSON-RPC wire types） |
 | `Shared/RPC/CommandResult.swift` | RPC 返回结果模型（Codable struct，RPC 层用 `RPCResult` 包装） |
-| `Shared/Models/CommandRequest.swift` | RPC 指令模型（Codable struct，RPC 层用 `RPCParams` 包装） |
+| `Shared/Models/MenuAction.swift` | RPC 指令模型（`actionID` + `targetURL` + `selectedURLs`，RPC 层用 `RPCActionParams` 包装） |
 | `Shared/Constants.swift` | `rpcHost` / `rpcPort` 常量 |
 | `mac-right-menu/ViewModels/AppState.swift` | Container 调用方（持有 `RPCServer`） |
-| `FinderExtension/FinderSync.swift` | Extension 调用方（持有 `RPCClient`） |
-| `FinderExtension/MenuActionHandler.swift` | 菜单动作 → `RPCClient.executeCommand` |
+| `FinderExtension/FinderSync.swift` | Extension 调用方（持有 `RPCClient`，`handleMenuAction` 构造 `MenuAction`） |
+| `FinderExtension/MenuBuilder.swift` | 结构无关的通用菜单渲染器（递归 `MenuItem` 树 → `NSMenu`） |

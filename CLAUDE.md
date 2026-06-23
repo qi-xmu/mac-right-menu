@@ -28,13 +28,13 @@ A macOS Finder right‑click extension has two parts:
    - Implements `FinderSync` protocol from the `FinderSync` framework
    - Runs as a separate XPC service (`finder-sync` process)
    - Receives `menu(for menuKind: FIMenuKind)` callback when Finder builds its contextual menu
-   - Returns `FIMenuItem` array to add custom menu items
-   - Handles menu action callback (`selected(_:)`)
+- Returns `NSMenu` to add custom menu items (built by `MenuBuilder` from a recursive `MenuItem` tree)
+   - Handles menu action callback (`@objc func handleMenuAction(_:)` → sends `MenuAction` via RPC)
 
 ### Communication Patterns
 
 - **Extension → Container**: JSON-RPC 2.0 over TCP loopback (`127.0.0.1:57421`). Extension uses `RPCClient` (NWConnection), Container runs `RPCServer` (NWListener). Messages are line-delimited JSON.
-- **Config sync**: `getConfig` pull on connect + `configDidChange` push on change (both via RPC). Each process keeps its own `UserDefaults.standard`; config travels in-band.
+- **Config sync**: `getConfig` pull on connect + `configDidChange` push on change (both via RPC). Each process keeps its own `UserDefaults.standard`; `MenuConfig` travels in-band (`ActionDefMap` stays on Container).
 - **Heartbeat**: Bidirectional ping/pong. Ext→Con detects dead Container (reconnects). Con→Ext detects dead Extension (re-launches via `pluginkit -e use`).
 - **Auto-launch**: Ext auto-launches Container on connect failure (`NSWorkspace.openApplication` / `open -b` fallback). Container auto-launches Extensions on startup via `pluginkit -e use` (configurable per-extension).
 - **Single-instance**: Container uses `NSRunningApplication` fast check + `flock()` atomic lock.
@@ -44,13 +44,11 @@ A macOS Finder right‑click extension has two parts:
 ### Execution Model
 
 - The extension process is managed by Finder — it's launched on demand and can be terminated by Finder
-- `beginExtension()` is called on activation
+- `beginObservingDirectory(at:)` is called on activation
 - `menu(for:)` is called whenever Finder is about to show a contextual menu (files/folders selected)
 - Menu items are configured per `FIMenuKind`:
-  - `.contextMenu` — right‑click on files/folders
-  - `.toolbarItemMenu` — toolbar button
-  - `.sidebarMenu` — sidebar items
-  - `.gearMenu` — gear button in Finder window title bar
+  - `.contextualMenuForItems` — right‑click on files/folders
+  - `.contextualMenuForContainer` — right‑click on empty space in Finder window
 
 ## Development Workflow
 

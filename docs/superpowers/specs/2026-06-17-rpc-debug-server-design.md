@@ -20,7 +20,7 @@ This enables faster debug cycles — no Xcode build, no SwiftUI window, just sta
 ```
 tests/rpc-debug/
 ├── rpc-debug-server.py       # single-file Python script (~300 lines)
-└── debug-config.json          # example MenuConfiguration for getConfig responses
+└── debug-config.json          # example AppConfig for getConfig responses
 
 pixi.toml                      # updated: add [dependencies] + [tasks]
 ```
@@ -40,12 +40,12 @@ pixi.toml                      # updated: add [dependencies] + [tasks]
 ├───────────────────────────────────────────┤
 │  Protocol (line-delimited JSON-RPC)       │
 │  - Read until \n → json.loads            │
-│  - Dispatch: ping / getConfig / executeCmd│
+│  - Dispatch: ping / getConfig / executeAct│
 │  - json.dumps + \n → send                │
 │  - Error handling + format validation     │
 ├───────────────────────────────────────────┤
 │  ConfigLoader                             │
-│  - Load MenuConfiguration from JSON file  │
+│  - Load AppConfig from JSON file          │
 │  - Fallback to built-in minimal config    │
 ├───────────────────────────────────────────┤
 │  Logger (rich)                            │
@@ -66,7 +66,7 @@ Messages arrive as `\n`-terminated JSON lines. The script decodes and dispatches
 |----------|---------------|----------|
 | `{"jsonrpc":"2.0","id":N,"method":"ping","meta":{...}}` | Has `id` + `method`="ping" | `{"jsonrpc":"2.0","id":N,"result":{"success":true}}` |
 | `{"jsonrpc":"2.0","id":N,"method":"getConfig"}` | Has `id` + `method`="getConfig" | `{"jsonrpc":"2.0","id":N,"result":{"success":true,"config":{...}}}` |
-| `{"jsonrpc":"2.0","id":N,"method":"executeCommand","params":{...}}` | Has `id` + `method`="executeCommand" | Rich-print action/files; `{"jsonrpc":"2.0","id":N,"result":{"success":true}}` |
+| `{"jsonrpc":"2.0","id":N,"method":"executeAction","params":{...}}` | Has `id` + `method`="executeAction" | Rich-print actionID/selectedURLs; `{"jsonrpc":"2.0","id":N,"result":{"success":true}}` |
 | `{"jsonrpc":"2.0","method":"pong"}` | Has `method`, no `id` | Log only (Extension heartbeat ack, no reply) |
 | Unknown method (has `id`) | — | `{"jsonrpc":"2.0","id":N,"error":{"code":-32601,"message":"Method not found"}}` |
 
@@ -80,37 +80,38 @@ Messages arrive as `\n`-terminated JSON lines. The script decodes and dispatches
 
 ### 4.3 `getConfig` Response Payload
 
-Read from the `--config` JSON file. The file must contain a valid `MenuConfiguration`:
+Read from the `--config` JSON file. The file must contain a valid `AppConfig`:
 
 ```json
 {
-  "isEnabled": true,
-  "appItems": [
-    {
-      "id": "vscode",
-      "title": "Open with VS Code",
-      "iconName": "",
-      "isEnabled": true,
-      "appURL": "/Applications/Visual Studio Code.app",
-      "displayName": "VS Code",
-      "arguments": "",
-      "environment": {}
-    }
-  ],
-  "actionItems": [
-    {"actionType": "copyPath", "isEnabled": true},
-    {"actionType": "copyFileName", "isEnabled": true},
-    {"actionType": "toggleHidden", "isEnabled": true}
-  ],
-  "newFileTemplates": [
-    {"fileName": "", "fileExtension": "txt", "defaultContent": "", "isEnabled": true},
-    {"fileName": "", "fileExtension": "md", "defaultContent": "", "isEnabled": true}
-  ],
-  "appsSectionEnabled": true
+  "menu": {
+    "isEnabled": true,
+    "showAppIcons": true,
+    "menus": [
+      {
+        "id": "section.newFile",
+        "isEnabled": true,
+        "showAppIcons": true,
+        "showCondition": "isDir",
+        "multiItemSupport": false,
+        "actionID": 0,
+        "icon": {"sfSymbol": "doc.badge.plus"},
+        "name": "New File",
+        "subMenus": [
+          {"id": "newFile.txt", "isEnabled": true, "showAppIcons": false, "showCondition": "isDir", "multiItemSupport": false, "actionID": 0, "icon": "none", "name": "untitled.txt", "subMenus": []},
+          {"id": "newFile.md", "isEnabled": true, "showAppIcons": false, "showCondition": "isDir", "multiItemSupport": false, "actionID": 1, "icon": "none", "name": "untitled.md", "subMenus": []}
+        ]
+      }
+    ]
+  },
+  "actions": {
+    "0": {"newFile": {"template": {"fileName": "", "fileExtension": "txt", "defaultContent": ""}}},
+    "1": {"newFile": {"template": {"fileName": "", "fileExtension": "md", "defaultContent": ""}}}
+  }
 }
 ```
 
-If the file is missing or invalid, the script starts with a minimal fallback config (`isEnabled: true`, empty items).
+If the file is missing or invalid, the script starts with a minimal fallback config (`isEnabled: true`, empty menus, empty actions).
 
 ## 5. CLI Interface
 
@@ -147,8 +148,8 @@ Non-verbose mode shows summarized one-liners with color:
 [12:34:56] → RECV ping  id=1  meta pid=1234 v=1.0
 [12:34:56] ← SEND pong  id=1  ✓
 [12:34:58] → RECV getConfig  id=2
-[12:34:58] ← SEND config  id=2  ✓
-[12:35:02] → RECV executeCommand  id=3  action=newFile  files=/tmp/test.txt
+[12:34:58] ← SEND config  id=2  ✓ config(2a/0c/2t)
+[12:35:02] → RECV executeAction  id=3  actionID=2  selectedURLs=/tmp/test.txt
 [12:35:02] ← SEND result  id=3  ✓
 [12:35:30] ↓ DISCONNECT  id=0  reason=EOF
 ```
@@ -200,12 +201,12 @@ The existing `[workspace]` section (channel `conda-forge`, platform `osx-arm64`)
 - Does NOT send `configDidChange` notifications (no config hot-reload during debug session)
 - Does NOT initiate Con→Ext pings (no heartbeat to Extension; Extension heartbeat still works)
 - Does NOT send `shutdown` notifications
-- Does NOT actually execute file operations (shell, file creation, etc.) — only logs and returns success
+- Does NOT actually execute file operations (new file, open with, copy, toggle hidden) — only logs and returns success
 - Single process, no graceful reload of config file at runtime
 
 ## 10. Compatibility
 
 - Matches wire format exactly: `RPCRequest` / `RPCResponse` / `RPCShutdownNotification` shapes from `Shared/RPC/RPCSession.swift`
-- `RPCParams` shape: `{"action": int, "files": [string], "command": string|null, "extra": {string:string}|null}`
-- `RPCResult` shape: `{"success": bool, "errorDescription": string|null}` plus optional `config`
-- `MenuConfiguration` shape as defined in `Shared/Preferences/MenuConfiguration.swift`
+- `RPCActionParams` shape: `{"actionID": int, "targetURL": string|null, "selectedURLs": [string]}`
+- `RPCResult` shape: `{"success": bool, "errorDescription": string|null}` plus optional `config` (type `MenuConfig`)
+- `AppConfig` shape as defined in `Shared/Models/AppConfig.swift` (bundled `MenuConfig` + `ActionDefMap`)
