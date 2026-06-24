@@ -259,7 +259,6 @@
       }
     },
     "Add applications to open files with from the right-click menu." : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -626,7 +625,6 @@
       }
     },
     "Create a new file from templates" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -725,6 +723,22 @@
         }
       }
     },
+    "Display icons next to items in the right-click menu. App icons may significantly affect menu opening speed; disable 'Show App Icons' in the Apps tab if the menu feels slow." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Display icons next to items in the right-click menu. App icons may significantly affect menu opening speed; disable 'Show App Icons' in the Apps tab if the menu feels slow."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在右键菜单中各项旁显示图标。应用图标可能严重拖慢菜单打开速度；如菜单卡顿，请在「应用」标签页关闭「显示应用图标」。"
+          }
+        }
+      }
+    },
     "Display SF Symbol icons next to action items (Copy Path, Copy File Name, etc.) in the right-click menu. Submenu headers are unaffected." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -755,6 +769,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在右键菜单中每个应用旁显示应用图标。"
+          }
+        }
+      }
+    },
+    "Display the application icon next to each app in the right-click menu. Note: showing app icons has a significant performance impact and may slow down menu opening." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Display the application icon next to each app in the right-click menu. Note: showing app icons has a significant performance impact and may slow down menu opening."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在右键菜单中每个应用旁显示应用图标。注意：显示应用图标对性能影响较大，可能拖慢菜单打开速度。"
           }
         }
       }
@@ -1231,7 +1261,6 @@
     },
     "New File" : {
       "comment" : "Title of the Finder submenu that lists new-file templates.",
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1553,7 +1582,6 @@
       }
     },
     "Open With Apps" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1887,7 +1915,6 @@
       }
     },
     "Show App Icons" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1899,6 +1926,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "显示应用图标"
+          }
+        }
+      }
+    },
+    "Show Icons" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show Icons"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示图标"
           }
         }
       }
@@ -1938,7 +1981,6 @@
       }
     },
     "Switch the filter to see other categories." : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1989,7 +2031,6 @@
       }
     },
     "Toggle which actions appear in the right-click menu." : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2086,54 +2127,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "关闭时指令仅记录日志，不实际执行。"
-          }
-        }
-      }
-    },
-    "Show Icons" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Show Icons"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "显示图标"
-          }
-        }
-      }
-    },
-    "Display icons next to items in the right-click menu. App icons may significantly affect menu opening speed; disable 'Show App Icons' in the Apps tab if the menu feels slow." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Display icons next to items in the right-click menu. App icons may significantly affect menu opening speed; disable 'Show App Icons' in the Apps tab if the menu feels slow."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在右键菜单中各项旁显示图标。应用图标可能严重拖慢菜单打开速度；如菜单卡顿，请在「应用」标签页关闭「显示应用图标」。"
-          }
-        }
-      }
-    },
-    "Display the application icon next to each app in the right-click menu. Note: showing app icons has a significant performance impact and may slow down menu opening." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Display the application icon next to each app in the right-click menu. Note: showing app icons has a significant performance impact and may slow down menu opening."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在右键菜单中每个应用旁显示应用图标。注意：显示应用图标对性能影响较大，可能拖慢菜单打开速度。"
           }
         }
       }

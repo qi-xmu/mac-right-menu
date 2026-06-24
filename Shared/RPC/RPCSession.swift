@@ -148,40 +148,52 @@ struct RPCShutdownNotification: Codable {
 
 /// Reads complete newline-terminated JSON lines from an NWConnection.
 /// Calls `handler` for each decoded line, then `onComplete` when the stream ends.
+///
+/// Maintains a cross-receive buffer so that a JSON message split across two TCP
+/// segments is reassembled before being emitted.  Only complete lines (ending
+/// with `\n`) are dispatched; partial data is held until the next receive fills
+/// in the remainder.  On stream end, any leftover bytes (peer sent a final
+/// message without a trailing newline) are flushed as-is.
 private func readLines(from connection: NWConnection,
                         handler: @escaping @Sendable (Data) -> Void,
                         onComplete: @escaping @Sendable () -> Void) {
-    // Copy into local @Sendable constants so Swift 6 strict concurrency
-    // doesn't complain about capturing a non-Sendable closure value when
-    // readLines calls itself recursively (line below's onComplete).
     let onComp = onComplete
     let onHandler = handler
-    connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { data, _, isComplete, error in
-        if let data, !data.isEmpty {
-            // Buffer handling: split on \n. Simple approach — assume messages fit in chunks.
-            // For this app's payload sizes (small command descriptors) this is sufficient.
-            var start = data.startIndex
-            while let nl = data[start...].firstIndex(of: 0x0A) {
-                let line = data[start..<nl]
-                if !line.isEmpty { onHandler(Data(line)) }
-                start = data.index(after: nl)
+    // Buffer accumulates data across receive() calls so that a JSON message
+    // split across two TCP segments is reassembled before being emitted.
+    var buffer = Data()
+
+    func receiveNext() {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { data, _, isComplete, error in
+            if let data, !data.isEmpty {
+                buffer.append(data)
+                // Extract every complete line (terminated by \n).
+                while let nl = buffer.firstIndex(of: 0x0A) {
+                    let line = buffer[buffer.startIndex..<nl]
+                    if !line.isEmpty { onHandler(Data(line)) }
+                    buffer = Data(buffer[buffer.index(after: nl)...])
+                }
+                // Incomplete line stays in buffer; the next receive() will
+                // append more data and we'll try again.
             }
-            // Trailing partial line without newline (shouldn't happen for well-formed peers).
-            if start < data.endIndex {
-                onHandler(Data(data[start..<data.endIndex]))
+            if let err = error {
+                logger.error("RPCSession: receive error: \(err.localizedDescription, privacy: .public)")
+                onComp()
+                return
             }
+            if isComplete {
+                // Stream ended.  Flush any remaining bytes — the peer may
+                // have sent a final message without a trailing \n.
+                if !buffer.isEmpty {
+                    onHandler(buffer)
+                }
+                onComp()
+                return
+            }
+            receiveNext()
         }
-        if let err = error {
-            logger.error("RPCSession: receive error: \(err.localizedDescription, privacy: .public)")
-            onComp()
-            return
-        }
-        if isComplete {
-            onComp()
-            return
-        }
-        readLines(from: connection, handler: onHandler, onComplete: onComp)
     }
+    receiveNext()
 }
 
 private func sendJSON<T: Encodable>(_ value: T, on connection: NWConnection) {
@@ -616,11 +628,11 @@ public final class RPCClient: @unchecked Sendable {
     // launch shouldn't be misclassified as fatal just because each
     // connection-refused during startup bumps the counter.
     private var failedRetries: Int = 0
-    static let maxFailedRetries = 3
+    static let maxFailedRetries = 5
     /// Wall-clock grace window during which retry-cap exhaustion does NOT cause
     /// a give-up. Tuned to comfortably exceed a cold Container launch + RPC
-    //  port bind (typically 2–4s on modern macOS).
-    static let maxFailedRetryWindow: TimeInterval = 15
+    //  port bind (typically 2–4s on modern macOS; 30s allows for heavy load).
+    static let maxFailedRetryWindow: TimeInterval = 30
     /// Timestamp of the first failure in the current streak; nil once a
     /// successful connect resets the streak.
     private var firstFailureTime: Date?
@@ -630,7 +642,7 @@ public final class RPCClient: @unchecked Sendable {
     // and bind its port. `retryInterval` is used otherwise (e.g. transient
     // drops when Con is presumably already running).
     static let postLaunchRetryInterval: TimeInterval = 3
-    static let retryInterval: TimeInterval = 2
+    static let retryInterval: TimeInterval = 3
 
     public init() {}
 
@@ -653,9 +665,7 @@ public final class RPCClient: @unchecked Sendable {
 
     public func connect() {
         lock.lock()
-        let alreadyConnected = connection != nil
-        lock.unlock()
-        guard !alreadyConnected else { return }
+        guard connection == nil else { lock.unlock(); return }
 
         let endpoint = NWEndpoint.hostPort(
             host: NWEndpoint.Host(Constants.rpcHost),
@@ -713,10 +723,12 @@ public final class RPCClient: @unchecked Sendable {
                 break
             }
         }
-        conn.start(queue: .global(qos: .userInitiated))
-        lock.lock()
+        // Assign inside the lock (together with the guard above) so that a
+        // concurrent resetAndRetry from an old connection's state handler can't
+        // slip in between the check and the assignment.
         connection = conn
         lock.unlock()
+        conn.start(queue: .global(qos: .userInitiated))
     }
 
     /// Invoke `executeAction` on the Container, forwarding the clicked menu
@@ -800,13 +812,15 @@ public final class RPCClient: @unchecked Sendable {
     }
 
     public func disconnect() {
-        retryWork?.cancel()
         lock.lock()
+        let work = retryWork
+        retryWork = nil
         let conn = connection
         connection = nil
         let snapshot = pending
         pending.removeAll()
         lock.unlock()
+        work?.cancel()
         conn?.cancel()
         // Fail any pending calls.
         for (_, cb) in snapshot { cb(nil) }
@@ -829,7 +843,7 @@ public final class RPCClient: @unchecked Sendable {
         // its RPC port, and each connection-refused during that window bumped
         // the counter. See giveUpGuard below.
         if attempts >= Self.maxFailedRetries, giveUpGuard() {
-            logger.error("[Ext] RPCClient: \(attempts) consecutive connection failures over \(Self.maxFailedRetryWindow)s — giving up")
+            logger.error("[Ext] RPCClient: \(attempts) consecutive connection failures — giving up")
             onShutdown?()
             return
         }
@@ -980,15 +994,13 @@ public final class RPCClient: @unchecked Sendable {
     ///   before we poke it again. Previously the retry fired on a fixed 2s timer
     ///   independent of the launch, racing it and burning through `maxRetries`.
     private func scheduleRetry(postLaunch: Bool = false) {
-        retryWork?.cancel()
-        // Anchor the failure streak's start time on the first failure so the
-        // give-up guard can apply its wall-clock grace window.
         lock.lock()
+        retryWork?.cancel()
         if firstFailureTime == nil { firstFailureTime = Date() }
-        lock.unlock()
         let interval = postLaunch ? Self.postLaunchRetryInterval : Self.retryInterval
         let work = DispatchWorkItem { [weak self] in self?.connect() }
         retryWork = work
+        lock.unlock()
         DispatchQueue.global().asyncAfter(deadline: .now() + interval, execute: work)
         if postLaunch {
             logger.notice("[Ext] RPCClient: retry scheduled in \(interval)s (waiting for Container to come up)")

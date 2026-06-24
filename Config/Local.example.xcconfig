@@ -1,6 +1,16 @@
 // Local code signing settings
 // Copy this file to Config/Local.xcconfig and fill in your values.
 // Config/Local.xcconfig is gitignored, so your personal settings stay local.
+//
+// Finding your Team ID:
+//   1. Visit https://developer.apple.com/account and sign in
+//   2. Your Team ID is shown under "Membership details"
+//   3. A free Apple ID works — no paid Developer Program membership needed
+//
+// If you don't have an Apple ID enrolled in the developer program:
+//   1. Open Xcode → Settings → Accounts → + → Add Apple ID
+//   2. Sign in with your Apple ID (free account is fine)
+//   3. Your Personal Team ID will appear under the account details
 
 DEVELOPMENT_TEAM = YOUR_TEAM_ID_HERE
 CODE_SIGN_STYLE = Automatic

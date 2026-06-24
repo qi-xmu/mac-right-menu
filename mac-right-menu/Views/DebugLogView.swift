@@ -347,7 +347,7 @@ private struct DebugLogRow: View {
         case .rpc:
             return entry.direction == .send ? "arrow.up.circle.fill" : "arrow.down.circle.fill"
         case .wake:       return "bell.fill"
-        case .connection: return "powerplugs.fill"
+        case .connection: return "cable.connector"
         case .lifecycle:  return "gearshape.fill"
         }
     }

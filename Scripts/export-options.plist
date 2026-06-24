@@ -1,5 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  NOTE: This file is no longer used by build-and-package.sh (v2+).
+  The script now uses `xcodebuild build` instead of `archive + exportArchive`,
+  so Developer ID export options are not needed for open source distribution.
+
+  Kept for reference in case you want to set up Developer ID signing later.
+  To use it, you'd need:
+    1. A paid Apple Developer Program membership
+    2. A Developer ID Application certificate in your keychain
+    3. Restore the archive + export flow in build-and-package.sh
+-->
 <plist version="1.0">
 <dict>
     <key>destination</key>
@@ -9,7 +20,7 @@
     <key>signingStyle</key>
     <string>automatic</string>
     <key>teamID</key>
-    <string>9H9AXS5ZLL</string>
+    <string>YOUR_TEAM_ID</string>
     <key>stripSwiftSymbols</key>
     <true/>
     <key>uploadBitcode</key>
