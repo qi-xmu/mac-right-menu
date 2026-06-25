@@ -1,0 +1,7 @@
+// App versioning — single source of truth.
+// Bump MARKETING_VERSION for releases. CURRENT_PROJECT_VERSION is set by
+// Scripts/set-build-number.sh (git rev-list count) at build time.
+
+#include "BuildNumber.xcconfig"
+
+MARKETING_VERSION = 1.0.2

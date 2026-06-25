@@ -8,6 +8,7 @@
 
 # Local signing configuration
 Config/Local.xcconfig
+Config/BuildNumber.xcconfig
 .DS_Store
 
 .mimocode
