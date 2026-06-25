@@ -1,14 +1,5 @@
 import Foundation
 
-/// The kind of action a leaf menu item performs (the
-/// `NEW_FILE | OPEN_WITH | GENERAL | CUSTOM` from the design doc).
-public enum ActionDefType: String, Codable, Sendable {
-    case newFile    // NEW_FILE
-    case openWith   // OPEN_WITH
-    case general    // GENERAL
-    case custom     // CUSTOM (shell; reserved, not yet implemented)
-}
-
 /// Definition of a single action (the `ActionDef` from the design doc), keyed
 /// by `actionID` in an `ActionDefMap`. The Container looks up
 /// `actionMap[actionID]` on click and executes the payload.
@@ -25,15 +16,6 @@ public enum ActionDef: Codable, Equatable, Sendable {
     case general(operation: GeneralOperation)
     /// Run a custom shell command. Reserved — not yet wired in the UI.
     case custom(command: String)
-
-    public var actionType: ActionDefType {
-        switch self {
-        case .newFile:  return .newFile
-        case .openWith: return .openWith
-        case .general:  return .general
-        case .custom:   return .custom
-        }
-    }
 }
 
 /// `actionID → ActionDef` (the `ActionDefMap<Int, ActionDef>` from the design
@@ -42,9 +24,7 @@ public enum ActionDef: Codable, Equatable, Sendable {
 /// Extension.
 public typealias ActionDefMap = [Int: ActionDef]
 
-/// The specific operation a `.general` `ActionDef` performs. This is the
-/// general-purpose subset of the former `ActionType` — `.newFile` is now its
-/// own `ActionDefType` carrying a `NewFileTemplate` payload.
+/// The specific operation a `.general` `ActionDef` performs.
 public enum GeneralOperation: String, Codable, Sendable, CaseIterable {
     case copyPath
     case copyFileName

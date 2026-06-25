@@ -42,13 +42,6 @@ public enum SharedUserDefaults {
         }
     }
 
-    // MARK: - Extension Enabled
-
-    public static var isExtensionEnabled: Bool {
-        get { defaults.bool(forKey: Constants.Defaults.isExtensionEnabledKey) }
-        set { defaults.set(newValue, forKey: Constants.Defaults.isExtensionEnabledKey) }
-    }
-
     // MARK: - Command Log Only
 
     public static var commandLogOnly: Bool {
@@ -95,7 +88,4 @@ public enum SharedUserDefaults {
         defaults.set(prefs, forKey: extensionPrefsKey)
     }
 
-    public static func forceReload() {
-        defaults.synchronize()
-    }
 }

@@ -23,7 +23,7 @@ public struct NewFileTemplate: Codable, Identifiable, Equatable, Sendable {
 
     /// The base name (no extension): the user's `fileName` if non-empty, else
     /// the localized "Untitled".
-    public var resolvedBaseName: String {
+    private var resolvedBaseName: String {
         fileName.isEmpty ? String(localized: "Untitled") : fileName
     }
 

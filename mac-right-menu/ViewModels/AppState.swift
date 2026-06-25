@@ -59,7 +59,7 @@ class AppState: ObservableObject {
         let server = RPCServer(
             onAction: { [weak self] action in
                 guard let self else {
-                    return CommandResult(success: false, errorDescription: "AppState released")
+                    return RPCResult(success: false, errorDescription: "AppState released")
                 }
                 return await self.executeAction(action)
             },
@@ -73,10 +73,14 @@ class AppState: ObservableObject {
                 guard let self else { return }
                 let pid = meta?["pid"].flatMap(Int.init)
                 let version = meta?["version"]
+                let displayName = meta?["displayName"]
                 if let index = self.extensions.firstIndex(where: { $0.bundleID == Constants.extensionBundleID }) {
                     self.extensions[index].isConnected = true
                     self.extensions[index].connectedPID = pid
                     self.extensions[index].connectedVersion = version
+                    if let name = displayName, !name.isEmpty {
+                        self.extensions[index].displayName = name
+                    }
                     self.extensions[index].lastHeartbeatAt = Date()
                 }
                 // Ext is alive — cancel any pending delayed wake.
@@ -161,11 +165,11 @@ class AppState: ObservableObject {
     // MARK: - Extension Management
 
     private func loadExtensions() {
-        extensions = Constants.knownExtensions.map { ext in
+        extensions = Constants.knownExtensions.map { bundleID in
             ExtensionInfo(
-                bundleID: ext.bundleID,
-                displayName: ext.displayName,
-                autoLaunch: SharedUserDefaults.extensionAutoLaunch(bundleID: ext.bundleID)
+                bundleID: bundleID,
+                displayName: bundleID,
+                autoLaunch: SharedUserDefaults.extensionAutoLaunch(bundleID: bundleID)
             )
         }
     }
@@ -324,6 +328,13 @@ class AppState: ObservableObject {
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(300))
             server.stop()
+        }
+    }
+
+    func quit() {
+        shutdownExtensions()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            NSApplication.shared.terminate(nil)
         }
     }
 
@@ -765,7 +776,7 @@ class AppState: ObservableObject {
     /// the current `ActionDefMap` and runs the matching `ActionDef`. Returns
     /// the real outcome so the RPC response reflects success/failure and the
     /// Execution Log records the same result the caller observed.
-    nonisolated func executeAction(_ action: MenuAction) async -> CommandResult {
+    nonisolated func executeAction(_ action: MenuAction) async -> RPCResult {
         let actionID = action.actionID
 
         // Snapshot the action definition on the main actor (AppState is
@@ -773,7 +784,7 @@ class AppState: ObservableObject {
         let def: ActionDef? = await MainActor.run { self.appConfig.actions[actionID] }
         guard let def else {
             logger.warning("[Con] executeAction: unknown actionID \(actionID)")
-            let result = CommandResult(success: false, errorDescription: "unknown actionID \(actionID)")
+            let result = RPCResult(success: false, errorDescription: "unknown actionID \(actionID)")
             await appendLog(actionName: "unknown(\(actionID))", files: [], result: result, shellCommand: nil, logOnly: false)
             return result
         }
@@ -792,12 +803,12 @@ class AppState: ObservableObject {
                 [Con][RPC RECV→DISPATCH] actionID=\(actionID, privacy: .public) \
                 files=\(effectiveURLs.map(\.path), privacy: .public)
                 """)
-            let result = CommandResult(success: true)
+            let result = RPCResult(success: true)
             await appendLog(actionName: actionName, files: effectiveURLs.map(\.path), result: result, shellCommand: nil, logOnly: true)
             return result
         }
 
-        var result: CommandResult
+        var result: RPCResult
         var shellCommand: String? = nil
 
         switch def {
@@ -813,7 +824,7 @@ class AppState: ObservableObject {
             // Reserved (shell); not yet wired in the UI.
             shellCommand = command
             logger.notice("[Con] custom action (unimplemented): \(command, privacy: .public)")
-            result = CommandResult(success: false, errorDescription: "custom action not implemented")
+            result = RPCResult(success: false, errorDescription: "custom action not implemented")
         }
 
         await appendLog(actionName: actionName, files: effectiveURLs.map(\.path), result: result, shellCommand: shellCommand, logOnly: false)
@@ -836,7 +847,7 @@ class AppState: ObservableObject {
     ///   - a selected folder → create inside it
     ///   - a selected file   → create in its parent
     ///   - empty space        → create in `targetURL` (the containing folder)
-    nonisolated private static func performNewFile(template: NewFileTemplate, targetURL: URL?, selectedURLs: [URL]) async -> CommandResult {
+    nonisolated private static func performNewFile(template: NewFileTemplate, targetURL: URL?, selectedURLs: [URL]) async -> RPCResult {
         let dirURL: URL
         if let first = selectedURLs.first {
             var isDir: ObjCBool = false
@@ -848,7 +859,7 @@ class AppState: ObservableObject {
         } else if let target = targetURL {
             dirURL = target
         } else {
-            return CommandResult(success: false, errorDescription: "newFile: no target directory")
+            return RPCResult(success: false, errorDescription: "newFile: no target directory")
         }
 
         let fm = FileManager.default
@@ -857,7 +868,7 @@ class AppState: ObservableObject {
         var counter = 1
         while fm.fileExists(atPath: fileURL.path) {
             guard counter < 1000 else {
-                return CommandResult(success: false, errorDescription: "newFile: too many name collisions for \(baseName)")
+                return RPCResult(success: false, errorDescription: "newFile: too many name collisions for \(baseName)")
             }
             let name = (baseName as NSString).deletingPathExtension
             let ext = (baseName as NSString).pathExtension
@@ -868,32 +879,32 @@ class AppState: ObservableObject {
             let content = template.defaultContent.data(using: .utf8) ?? Data()
             try content.write(to: fileURL)
             logger.notice("Created new file: \(fileURL.path)")
-            return CommandResult(success: true)
+            return RPCResult(success: true)
         } catch {
             logger.error("newFile failed: \(error.localizedDescription)")
-            return CommandResult(success: false, errorDescription: "newFile failed: \(error.localizedDescription)")
+            return RPCResult(success: false, errorDescription: "newFile failed: \(error.localizedDescription)")
         }
     }
 
     /// Open the given URLs with an application.
-    nonisolated private static func performOpenWith(app: AppTarget, urls: [URL]) async -> CommandResult {
+    nonisolated private static func performOpenWith(app: AppTarget, urls: [URL]) async -> RPCResult {
         guard !urls.isEmpty else {
-            return CommandResult(success: false, errorDescription: "openWith: nothing to open")
+            return RPCResult(success: false, errorDescription: "openWith: nothing to open")
         }
         do {
             let config = NSWorkspace.OpenConfiguration()
             config.promptsUserIfNeeded = true
             let launched = try await NSWorkspace.shared.open(urls, withApplicationAt: app.appURL, configuration: config)
             logger.notice("Opened \(urls.count) item(s) with \(launched.localizedName ?? app.displayName)")
-            return CommandResult(success: true)
+            return RPCResult(success: true)
         } catch {
             logger.error("openWith failed: \(error.localizedDescription)")
-            return CommandResult(success: false, errorDescription: "openWith failed: \(error.localizedDescription)")
+            return RPCResult(success: false, errorDescription: "openWith failed: \(error.localizedDescription)")
         }
     }
 
     /// Run a built-in general operation (copy path / copy name / toggle hidden).
-    nonisolated private static func performGeneral(_ operation: GeneralOperation, urls: [URL]) -> CommandResult {
+    nonisolated private static func performGeneral(_ operation: GeneralOperation, urls: [URL]) -> RPCResult {
         switch operation {
         case .copyPath:
             let paths = urls.map(\.path).joined(separator: "\n")
@@ -901,14 +912,14 @@ class AppState: ObservableObject {
             pb.clearContents()
             pb.setString(paths, forType: .string)
             logger.notice("Copied \(urls.count) path(s)")
-            return CommandResult(success: true)
+            return RPCResult(success: true)
         case .copyFileName:
             let names = urls.map(\.lastPathComponent).joined(separator: "\n")
             let pb = NSPasteboard.general
             pb.clearContents()
             pb.setString(names, forType: .string)
             logger.notice("Copied \(urls.count) file name(s)")
-            return CommandResult(success: true)
+            return RPCResult(success: true)
         case .toggleHidden:
             var failed: String?
             for url in urls {
@@ -925,8 +936,8 @@ class AppState: ObservableObject {
                     break
                 }
             }
-            return failed.map { CommandResult(success: false, errorDescription: "toggleHidden failed: \($0)") }
-                ?? CommandResult(success: true)
+            return failed.map { RPCResult(success: false, errorDescription: "toggleHidden failed: \($0)") }
+                ?? RPCResult(success: true)
         }
     }
 
@@ -936,7 +947,7 @@ class AppState: ObservableObject {
     nonisolated private func appendLog(
         actionName: String,
         files: [String],
-        result: CommandResult,
+        result: RPCResult,
         shellCommand: String?,
         logOnly: Bool
     ) async {

@@ -19,7 +19,7 @@ public enum Constants {
     /// Extension. Used as a log prefix so the origin of each line is obvious
     /// at a glance without filtering by subsystem.
     public static var currentProcessRole: String {
-        currentBundleID == extensionBundleID ? "Ext" : "Con"
+        currentBundleID == mainAppBundleID ? "Con" : "Ext"
     }
 
     /// JSON-RPC over TCP: Container listens on 127.0.0.1 at this fixed port.
@@ -42,13 +42,12 @@ public enum Constants {
 
     /// All known extensions bundled with this app. Used to populate the
     /// extension list in settings and for auto-launch on Container startup.
-    public static let knownExtensions: [(bundleID: String, displayName: String)] = [
-        (extensionBundleID, "Finder Extension"),
+    public static let knownExtensions: [String] = [
+        extensionBundleID,
     ]
 
     public enum Defaults {
         public static let appConfigKey = "appConfig"
-        public static let isExtensionEnabledKey = "isExtensionEnabled"
         public static let commandLogOnlyKey = "commandLogOnly"
         public static let debugLogEnabledKey = "debugLogEnabled"
         public static let executionLogEnabledKey = "executionLogEnabled"

@@ -7,35 +7,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         _ sender: NSApplication,
         hasVisibleWindows flag: Bool
     ) -> Bool {
-        if !flag { openSettings() }
+        if !flag {
+            NSApp.activate(ignoringOtherApps: true)
+        }
         return true
     }
-
-    @MainActor func openSettings() {
-        if let window = NSApp.windows.first(where: {
-            $0.title.contains("mac-right-menu")
-        }) {
-            NSApp.activate(ignoringOtherApps: true)
-            window.makeKeyAndOrderFront(self)
-        } else {
-            NotificationCenter.default.post(
-                name: .openSettingsWindow,
-                object: nil
-            )
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                NSApp.activate(ignoringOtherApps: true)
-                NSApp.windows.first(where: {
-                    $0.title.contains("mac-right-menu")
-                })?.makeKeyAndOrderFront(nil)
-            }
-        }
-    }
-}
-
-// MARK: - Notification
-
-extension Notification.Name {
-    static let openSettingsWindow = Notification.Name("openSettingsWindow")
 }
 
 // MARK: - App
@@ -49,48 +25,24 @@ struct MacRightMenuApp: App {
     var body: some Scene {
         MenuBarExtra {
             Button("Open Settings") {
-                if let window = NSApp.windows.first(where: {
-                    $0.title.contains("mac-right-menu")
-                }) {
-                    NSApp.activate(ignoringOtherApps: true)
-                    window.makeKeyAndOrderFront(self)
-                } else {
-                    openWindow(id: "settings")
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        NSApp.activate(ignoringOtherApps: true)
-                        NSApp.windows.first(where: {
-                            $0.title.contains("mac-right-menu")
-                        })?.makeKeyAndOrderFront(nil)
-                    }
-                }
+                openWindow(id: "settings")
+                NSApp.activate(ignoringOtherApps: true)
             }
             .keyboardShortcut(",")
+            Divider()
             Button("Execution Log") {
                 openWindow(id: "log")
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    NSApp.activate(ignoringOtherApps: true)
-                    NSApp.windows.first(where: {
-                        $0.title.contains("Execution Log")
-                    })?.makeKeyAndOrderFront(nil)
-                }
+                NSApp.activate(ignoringOtherApps: true)
             }.keyboardShortcut("l")
             if appState.debugLogEnabled {
                 Button("Debug Log") {
                     openWindow(id: "debug-log")
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        NSApp.activate(ignoringOtherApps: true)
-                        NSApp.windows.first(where: {
-                            $0.title.contains("Debug Log")
-                        })?.makeKeyAndOrderFront(nil)
-                    }
+                    NSApp.activate(ignoringOtherApps: true)
                 }.keyboardShortcut("d", modifiers: [.command, .shift])
             }
             Divider()
             Button("Quit") {
-                appState.shutdownExtensions()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    NSApplication.shared.terminate(nil)
-                }
+                appState.quit()
             }
             .keyboardShortcut("q")
         } label: {

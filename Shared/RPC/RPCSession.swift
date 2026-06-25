@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Network
+import os
 import os.log
 
 private let logger = Logger(subsystem: Constants.currentBundleID, category: "rpc-session")
@@ -88,17 +89,17 @@ struct RPCActionParams: Codable {
     }
 }
 
-/// Result of `executeAction` — mirrors `CommandResult`. Also carries an
-/// optional `config` for `getConfig` responses (the menu tree pushed to the
-/// Extension).
+/// Result of `executeAction` / `getConfig` sent as the JSON-RPC response
+/// payload. For action results `config` is nil; for `getConfig` it carries the
+/// menu tree.
 public struct RPCResult: Codable {
     public let success: Bool
     public let errorDescription: String?
     public let config: MenuConfig?
 
-    public init(_ res: CommandResult) {
-        self.success = res.success
-        self.errorDescription = res.errorDescription
+    public init(success: Bool, errorDescription: String? = nil) {
+        self.success = success
+        self.errorDescription = errorDescription
         self.config = nil
     }
 
@@ -159,37 +160,32 @@ private func readLines(from connection: NWConnection,
                         onComplete: @escaping @Sendable () -> Void) {
     let onComp = onComplete
     let onHandler = handler
-    // Buffer accumulates data across receive() calls so that a JSON message
-    // split across two TCP segments is reassembled before being emitted.
-    var buffer = Data()
+    let buffer = OSAllocatedUnfairLock(initialState: Data())
 
     func receiveNext() {
         connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { data, _, isComplete, error in
-            if let data, !data.isEmpty {
-                buffer.append(data)
-                // Extract every complete line (terminated by \n).
-                while let nl = buffer.firstIndex(of: 0x0A) {
-                    let line = buffer[buffer.startIndex..<nl]
-                    if !line.isEmpty { onHandler(Data(line)) }
-                    buffer = Data(buffer[buffer.index(after: nl)...])
+            buffer.withLock { buf in
+                if let data, !data.isEmpty {
+                    buf.append(data)
+                    while let nl = buf.firstIndex(of: 0x0A) {
+                        let line = buf[buf.startIndex..<nl]
+                        if !line.isEmpty { onHandler(Data(line)) }
+                        buf = Data(buf[buf.index(after: nl)...])
+                    }
                 }
-                // Incomplete line stays in buffer; the next receive() will
-                // append more data and we'll try again.
-            }
-            if let err = error {
-                logger.error("RPCSession: receive error: \(err.localizedDescription, privacy: .public)")
-                onComp()
-                return
-            }
-            if isComplete {
-                // Stream ended.  Flush any remaining bytes — the peer may
-                // have sent a final message without a trailing \n.
-                if !buffer.isEmpty {
-                    onHandler(buffer)
+                if let err = error {
+                    logger.error("RPCSession: receive error: \(err.localizedDescription, privacy: .public)")
+                    onComp()
+                    return
                 }
-                onComp()
-                return
+                if isComplete {
+                    if !buf.isEmpty {
+                        onHandler(buf)
+                    }
+                    onComp()
+                }
             }
+            if error != nil || isComplete { return }
             receiveNext()
         }
     }
@@ -202,24 +198,13 @@ private func sendJSON<T: Encodable>(_ value: T, on connection: NWConnection) {
         return
     }
     logger.debug("[\(Constants.currentProcessRole, privacy: .public)][RPC SEND] \(payload, privacy: .public)")
-    guard let data = encodeWireJSON(value) else { return }
+    var data = payload.data(using: .utf8) ?? Data()
+    data.append(0x0A)
     connection.send(content: data, completion: .contentProcessed { error in
         if let error {
             logger.error("RPCSession: send error: \(error.localizedDescription, privacy: .public)")
         }
     })
-}
-
-/// Encode a value for JSON-RPC wire transmission (compact JSON + \n).
-/// Returns the complete wire data ready for connection.send, or nil on failure.
-/// The same encoding is used for the raw-payload string stored in debug-log
-/// entries so the expanded payload always matches what was actually sent or
-/// received on the wire.
-private func encodeWireJSON<T: Encodable>(_ value: T) -> Data? {
-    guard let payload = payloadJSON(value) else { return nil }
-    var data = payload.data(using: .utf8) ?? Data()
-    data.append(0x0A)
-    return data
 }
 
 /// Serialise a value to compact JSON (no newline), matching the wire format
@@ -234,7 +219,7 @@ private func payloadJSON<T: Encodable>(_ value: T) -> String? {
 
 public final class RPCServer: @unchecked Sendable {
     private var listener: NWListener?
-    private let onAction: @Sendable (MenuAction) async -> (CommandResult)
+    private let onAction: @Sendable (MenuAction) async -> (RPCResult)
     private let getConfig: @MainActor @Sendable () -> MenuConfig
     private let onHeartbeat: @MainActor @Sendable ([String: String]?) -> Void
     private let onDisconnected: @MainActor @Sendable () -> Void
@@ -248,7 +233,7 @@ public final class RPCServer: @unchecked Sendable {
     private var pingTimer: DispatchSourceTimer?
 
     public init(
-        onAction: @escaping @Sendable (MenuAction) async -> (CommandResult),
+        onAction: @escaping @Sendable (MenuAction) async -> (RPCResult),
         getConfig: @escaping @MainActor @Sendable () -> MenuConfig,
         onHeartbeat: @escaping @MainActor @Sendable ([String: String]?) -> Void,
         onDisconnected: @escaping @MainActor @Sendable () -> Void = {},
@@ -483,7 +468,7 @@ public final class RPCServer: @unchecked Sendable {
             Task { @MainActor in onHeartbeat(meta) }
             recordPong(connection)
             let resp = RPCResponse(jsonrpc: "2.0", id: req.id,
-                                   result: RPCResult(CommandResult(success: true)), error: nil)
+                                   result: RPCResult(success: true), error: nil)
             let respPayload = payloadJSON(resp)
             sendJSON(resp, on: connection)
             onActivity(RPCActivity(kind: .rpc, direction: .send, method: "response", rpcID: req.id, summary: "hello ack", detail: "  pid=\(meta["pid"] ?? "?") version=\(meta["version"] ?? "?")", rawPayload: respPayload))
@@ -513,7 +498,7 @@ public final class RPCServer: @unchecked Sendable {
             // completes. JSON-RPC framing supports this deferred response.
             Task {
                 let result = await onAction(action)
-                let resp = RPCResponse(jsonrpc: "2.0", id: req.id, result: RPCResult(result), error: nil)
+                let resp = RPCResponse(jsonrpc: "2.0", id: req.id, result: result, error: nil)
                 let respPayload = payloadJSON(resp)
                 sendJSON(resp, on: connection)
                 let ok = result.success ? "ok" : "fail"
@@ -802,9 +787,13 @@ public final class RPCClient: @unchecked Sendable {
         let id = nextID
         nextID += 1
         lock.unlock()
+        let extDisplayName = Bundle.main.infoDictionary?["CFBundleDisplayName"] as? String
+            ?? Bundle.main.infoDictionary?["CFBundleName"] as? String
+            ?? Bundle.main.bundleURL.deletingPathExtension().lastPathComponent
         let meta: [String: String] = [
             "pid": "\(ProcessInfo.processInfo.processIdentifier)",
-            "version": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
+            "version": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown",
+            "displayName": extDisplayName
         ]
         let req = RPCRequest(id: id, method: "hello", meta: meta)
         logger.debug("[Ext][RPC CALL] id=\(id) method=hello")

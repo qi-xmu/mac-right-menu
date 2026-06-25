@@ -29,7 +29,7 @@ public struct ExtensionInfo: Identifiable, Codable {
     public let bundleID: String
 
     /// Human-readable name for display (e.g. "Finder Extension")
-    public let displayName: String
+    public var displayName: String
 
     /// System-level registration state (pluginkit). Set by the Container.
     public var registrationStatus: RegistrationStatus = .notInstalled
