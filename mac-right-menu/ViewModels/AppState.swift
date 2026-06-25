@@ -18,6 +18,20 @@ struct TemplateRow: Identifiable, Equatable {
     var isEnabled: Bool
 }
 
+enum UpdateCheckResult {
+    case upToDate
+    case updateAvailable(_ version: String)
+    case error(_ message: String)
+}
+
+private struct GitHubRelease: Codable {
+    let tagName: String
+
+    enum CodingKeys: String, CodingKey {
+        case tagName = "tag_name"
+    }
+}
+
 @MainActor
 class AppState: ObservableObject {
     /// The sole source of truth: menu tree (`menu`) + action definitions
@@ -43,6 +57,8 @@ class AppState: ObservableObject {
     /// `appendDebugActivity` so 1s-interval ping/pong don't fill the cap.
     @Published private(set) var debugLog: [DebugLogEntry] = []
     private let maxDebugEntries = 100
+
+    @Published var isCheckingUpdate = false
 
     /// Pending delayed Con→Ext wake. On heartbeat-timeout we don't immediately
     /// `pluginkit -e use`; we schedule it `extWakeDelay` seconds out. If the
@@ -343,6 +359,34 @@ class AppState: ObservableObject {
         shutdownExtensions()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             NSApplication.shared.terminate(nil)
+        }
+    }
+
+    func checkForUpdate(completion: @escaping @MainActor (UpdateCheckResult) -> Void) {
+        guard !isCheckingUpdate else { return }
+        isCheckingUpdate = true
+        Task.detached {
+            let result: UpdateCheckResult
+            do {
+                let url = URL(string: "https://api.github.com/repos/qi-xmu/mac-right-menu/releases/latest")!
+                var req = URLRequest(url: url)
+                req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+                let (data, _) = try await URLSession.shared.data(for: req)
+                let release = try JSONDecoder().decode(GitHubRelease.self, from: data)
+                let latest = release.tagName.replacingOccurrences(of: "v", with: "")
+                let current = Constants.version
+                if latest.compare(current, options: .numeric) == .orderedDescending {
+                    result = .updateAvailable(latest)
+                } else {
+                    result = .upToDate
+                }
+            } catch {
+                result = .error(error.localizedDescription)
+            }
+            await MainActor.run {
+                self.isCheckingUpdate = false
+                completion(result)
+            }
         }
     }
 

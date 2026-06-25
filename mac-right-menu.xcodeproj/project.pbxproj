@@ -24,6 +24,7 @@
 		6B8B9AB7DA9F01452C2B4783 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = FF59226764AF1CFFDC561239 /* Localizable.xcstrings */; };
 		6C88CB96F5370E2F914C077D /* FullDiskAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = C09AC2EA078A73461EC5A868 /* FullDiskAccess.swift */; };
 		6F2342ADFF8E258060B0A06A /* ActionDef.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC5E0C5BC15FEDDB7E0F61DB /* ActionDef.swift */; };
+		816F18234D4F4F41BB3982A8 /* AboutSettingsTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 563B94FD69D947399B8F6A19 /* AboutSettingsTab.swift */; };
 		81CD2A90DE36ED42D78C7B69 /* ExtensionInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 117CD93D5335254BE2E4C974 /* ExtensionInfo.swift */; };
 		8274032C4E1DC02B573863A4 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDA173AFFD620244655EA215 /* AppState.swift */; };
 		82ACB851B2BC1CF189915121 /* NewFileTemplate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9C495B11F638A04B8E3EFED /* NewFileTemplate.swift */; };
@@ -83,10 +84,11 @@
 		108A6DB428B7D682BFE80908 /* Constants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Constants.swift; sourceTree = "<group>"; };
 		117CD93D5335254BE2E4C974 /* ExtensionInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionInfo.swift; sourceTree = "<group>"; };
 		1E11FAF32F404EE1051398B4 /* ExecutionLogEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExecutionLogEntry.swift; sourceTree = "<group>"; };
-		255056C34CEA98661DC8EE7A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		255056C34CEA98661DC8EE7A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		2FABE9BF0AD03A573DB2C6DF /* MenuConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuConfig.swift; sourceTree = "<group>"; };
 		3F3C1D1332A39A4FB6880E99 /* mac-right-menu.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "mac-right-menu.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		40CE98C6FE58A80ADB8B26C5 /* SharedUserDefaults.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedUserDefaults.swift; sourceTree = "<group>"; };
+		563B94FD69D947399B8F6A19 /* AboutSettingsTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutSettingsTab.swift; sourceTree = "<group>"; };
 		568C283306D87E86AA48AA17 /* mac-right-menu.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "mac-right-menu.entitlements"; sourceTree = "<group>"; };
 		59CA55100CF81240021634FC /* NewFileSettingsTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewFileSettingsTab.swift; sourceTree = "<group>"; };
 		626C40FAC2601D59DC49C42E /* FinderExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FinderExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -150,6 +152,7 @@
 			isa = PBXGroup;
 			children = (
 				79D69EBC70AADF2563A596E3 /* ActionsSettingsTab.swift */,
+				563B94FD69D947399B8F6A19 /* AboutSettingsTab.swift */,
 				B0D9421302623A30C0699F81 /* AppsSettingsTab.swift */,
 				F8272629D92AF6D8436E3012 /* DebugLogView.swift */,
 				982C57228CB76B4D291F9C5D /* ExecutionLogView.swift */,
@@ -366,12 +369,45 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		9E66C9BF02684358A594E1A1 /* Set Build Number */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Set Build Number";
+			outputPaths = (
+				"$(SRCROOT)/Config/BuildNumber.xcconfig",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${SRCROOT}/Scripts/set-build-number.sh\"\n";
+		};
+		D9001DE3D8CE4AE29A9D0AB7 /* Set Build Number */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Set Build Number";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${SRCROOT}/Scripts/set-build-number.sh\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		1FFAB6C92A94B90EFC0F649E /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				6F2342ADFF8E258060B0A06A /* ActionDef.swift in Sources */,
+				816F18234D4F4F41BB3982A8 /* AboutSettingsTab.swift in Sources */,
 				3237E76B10AD05A83D9874CC /* ActionsSettingsTab.swift in Sources */,
 				0AE957FF3E346F10B10DB94D /* AppConfig.swift in Sources */,
 				8274032C4E1DC02B573863A4 /* AppState.swift in Sources */,
@@ -668,38 +704,6 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
-
-/* Begin PBXShellScriptBuildPhase section */
-		9E66C9BF02684358A594E1A1 /* Set Build Number */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-			);
-			name = "Set Build Number";
-			outputPaths = (
-				"$(SRCROOT)/Config/BuildNumber.xcconfig",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${SRCROOT}/Scripts/set-build-number.sh\"\n";
-		};
-		D9001DE3D8CE4AE29A9D0AB7 /* Set Build Number */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-			);
-			name = "Set Build Number";
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${SRCROOT}/Scripts/set-build-number.sh\"\n";
-		};
-/* End PBXShellScriptBuildPhase section */
 	};
 	rootObject = 55D7B000CB31532BFDFD868B /* Project object */;
 }

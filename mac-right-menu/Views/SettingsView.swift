@@ -27,6 +27,7 @@ struct SettingsView: View {
         case .file: NewFileSettingsTab()
         case .apps: AppsSettingsTab()
         case .actions: ActionsSettingsTab()
+        case .about: AboutSettingsTab()
         }
     }
 }
@@ -34,7 +35,7 @@ struct SettingsView: View {
 // MARK: - Sidebar Navigation Items
 
 private enum SettingsNav: String, CaseIterable, Identifiable {
-    case general, extensions, file, apps, actions
+    case general, extensions, file, apps, actions, about
 
     var id: String { rawValue }
 
@@ -45,6 +46,7 @@ private enum SettingsNav: String, CaseIterable, Identifiable {
         case .file: String(localized: "File")
         case .apps: String(localized: "Apps")
         case .actions: String(localized: "Actions")
+        case .about: String(localized: "About")
         }
     }
 
@@ -55,6 +57,7 @@ private enum SettingsNav: String, CaseIterable, Identifiable {
         case .file: "doc.badge.plus"
         case .apps: "square.grid.2x2"
         case .actions: "bolt"
+        case .about: "info.circle"
         }
     }
 }
