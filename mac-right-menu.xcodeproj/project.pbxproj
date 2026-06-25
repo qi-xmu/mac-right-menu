@@ -294,6 +294,7 @@
 				888EA0E03CB9EB182F836832 /* Sources */,
 				FECDC2E4317AF536D6A0DFA2 /* Resources */,
 				CADEE477DFAEE4CC0F884399 /* Frameworks */,
+				D9001DE3D8CE4AE29A9D0AB7 /* Set Build Number */,
 			);
 			buildRules = (
 			);
@@ -679,6 +680,20 @@
 			name = "Set Build Number";
 			outputPaths = (
 				"$(SRCROOT)/Config/BuildNumber.xcconfig",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${SRCROOT}/Scripts/set-build-number.sh\"\n";
+		};
+		D9001DE3D8CE4AE29A9D0AB7 /* Set Build Number */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Set Build Number";
+			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;

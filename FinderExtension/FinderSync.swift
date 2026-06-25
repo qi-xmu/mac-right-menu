@@ -1,6 +1,7 @@
 import AppKit
 import FinderSync
 import os.log
+import UserNotifications
 
 private let logger = Logger(subsystem: Constants.extensionBundleID, category: "finder-sync")
 
@@ -26,7 +27,7 @@ class FinderSyncExtension: FIFinderSync, @unchecked Sendable {
 
     override init() {
         super.init()
-        logger.notice("FinderSync initialized")
+        logger.notice("FinderSync initialized — v\(Constants.version) (\(Constants.build))")
 
         // cachedConfig stays at .default until the RPC connection comes up,
         // at which point getConfig pulls the real menu tree from the Container.
@@ -159,6 +160,21 @@ class FinderSyncExtension: FIFinderSync, @unchecked Sendable {
         ) { result in
             if let result {
                 logger.notice("[RPC OK] actionID=\(actionID, privacy: .public) → \(result.success ? "OK" : "FAIL", privacy: .public)")
+                if !result.success {
+                    let errorDesc = result.errorDescription ?? "未知错误"
+                    DispatchQueue.main.async {
+                        let content = UNMutableNotificationContent()
+                        content.title = "操作失败"
+                        content.body = errorDesc
+                        content.sound = .default
+                        let request = UNNotificationRequest(
+                            identifier: UUID().uuidString,
+                            content: content,
+                            trigger: nil
+                        )
+                        UNUserNotificationCenter.current().add(request)
+                    }
+                }
             } else {
                 logger.notice("[RPC DOWN] actionID=\(actionID, privacy: .public)")
             }
