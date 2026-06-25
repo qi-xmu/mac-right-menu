@@ -402,6 +402,34 @@ class AppState: ObservableObject {
         }
     }
 
+    func quickCheckUpdate() {
+        checkForUpdate { result in
+            let alert = NSAlert()
+            switch result {
+            case .upToDate:
+                alert.messageText = String(localized: "You're up to date!")
+                alert.alertStyle = .informational
+                alert.addButton(withTitle: String(localized: "OK"))
+            case .updateAvailable(let version, let url):
+                alert.messageText = String(localized: "New version v\(version) available!")
+                alert.informativeText = String(localized: "Download and install now? The app will quit after downloading.")
+                alert.alertStyle = .informational
+                alert.addButton(withTitle: String(localized: "Download & Install"))
+                alert.addButton(withTitle: String(localized: "Later"))
+                if alert.runModal() == .alertFirstButtonReturn {
+                    self.downloadAndInstall(from: url) { _ in }
+                }
+                return
+            case .error(let msg):
+                alert.messageText = String(localized: "Update check failed")
+                alert.informativeText = msg
+                alert.alertStyle = .warning
+                alert.addButton(withTitle: String(localized: "OK"))
+            }
+            alert.runModal()
+        }
+    }
+
     func downloadAndInstall(from urlString: String, completion: @escaping @MainActor (String?) -> Void) {
         guard !isDownloading, let url = URL(string: urlString) else { return }
         isDownloading = true

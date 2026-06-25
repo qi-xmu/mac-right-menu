@@ -1010,6 +1010,23 @@
         }
       }
     },
+    "Download and install now? The app will quit after downloading." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Download and install now? The app will quit after downloading."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "立即下载安装？App 将在下载后退出。"
+          }
+        }
+      }
+    },
     "Downloading..." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -1477,6 +1494,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "最后心跳"
+          }
+        }
+      }
+    },
+    "Later" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Later"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "稍后"
           }
         }
       }
@@ -2420,6 +2454,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "未命名"
+          }
+        }
+      }
+    },
+    "Update check failed" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Update check failed"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新检查失败"
           }
         }
       }
