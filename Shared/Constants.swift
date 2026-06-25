@@ -22,12 +22,21 @@ public enum Constants {
         currentBundleID == mainAppBundleID ? "Con" : "Ext"
     }
 
+    /// App version from Info.plist (e.g. "1.0.2").
+    public static var version: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
+    }
+
+    /// Build number from Info.plist (e.g. "37").
+    public static var build: String {
+        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "0"
+    }
+
     /// JSON-RPC over TCP: Container listens on 127.0.0.1 at this fixed port.
     public static let rpcHost = "127.0.0.1"
     public static let rpcPort: UInt16 = 57421
 
-    /// Lock file written by the Container to indicate it is running.
-    /// Extension checks this before attempting to launch a second instance.
+    /// Lock file for single-instance guard via flock().
     public static var containerLockURL: URL? {
         FileManager.default.containerURL(
             forSecurityApplicationGroupIdentifier: appGroupID

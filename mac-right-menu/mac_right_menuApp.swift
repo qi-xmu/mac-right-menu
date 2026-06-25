@@ -41,10 +41,16 @@ struct MacRightMenuApp: App {
                 }.keyboardShortcut("d", modifiers: [.command, .shift])
             }
             Divider()
+            Text("v\(Constants.version) (\(Constants.build))")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+            Divider()
             Button("Quit") {
                 appState.quit()
             }
             .keyboardShortcut("q")
+
+      
         } label: {
             Image(systemName: "menubar.dock.rectangle")
         }

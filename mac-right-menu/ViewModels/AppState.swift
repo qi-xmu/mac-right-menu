@@ -73,11 +73,14 @@ class AppState: ObservableObject {
                 guard let self else { return }
                 let pid = meta?["pid"].flatMap(Int.init)
                 let version = meta?["version"]
+                let build = meta?["build"]
                 let displayName = meta?["displayName"]
                 if let index = self.extensions.firstIndex(where: { $0.bundleID == Constants.extensionBundleID }) {
                     self.extensions[index].isConnected = true
                     self.extensions[index].connectedPID = pid
-                    self.extensions[index].connectedVersion = version
+                    if let ver = version {
+                        self.extensions[index].connectedVersion = build.map { "\(ver) (\($0))" } ?? ver
+                    }
                     if let name = displayName, !name.isEmpty {
                         self.extensions[index].displayName = name
                     }
@@ -152,7 +155,6 @@ class AppState: ObservableObject {
 
         self.appConfig = SharedUserDefaults.appConfig
         loadExtensions()
-        writeLockFile()
         _ = rpcServer
         // Registration check is async; it kicks off auto-launch once the
         // pluginkit status is known (see `checkExtensionRegistration`).
@@ -322,7 +324,6 @@ class AppState: ObservableObject {
     }
 
     func shutdownExtensions() {
-        removeLockFile()
         rpcServer.broadcastShutdown()
         let server = rpcServer
         Task { @MainActor in
@@ -448,7 +449,7 @@ class AppState: ObservableObject {
         appendDebugEntry(entry)
     }
 
-    // MARK: - Lock file (single-instance guard)
+    // MARK: - Lock file (single-instance guard via flock)
 
     nonisolated private static func acquireInstanceLock() -> Int32 {
         guard let url = Constants.containerLockURL else { return -1 }
@@ -463,24 +464,12 @@ class AppState: ObservableObject {
         return fd
     }
 
-    private func writeLockFile() {
-        guard let url = Constants.containerLockURL else { return }
-        let pid = "\(ProcessInfo.processInfo.processIdentifier)"
-        try? pid.write(to: url, atomically: true, encoding: .utf8)
-    }
-
-    private func removeLockFile() {
-        guard let url = Constants.containerLockURL else { return }
-        try? FileManager.default.removeItem(at: url)
-    }
-
     /// Release the single-instance lock so a relaunched Container can start
     /// without being killed by the duplicate guard. Call before restart.
     func releaseInstanceLock() {
         if lockFileDescriptor >= 0 {
             close(lockFileDescriptor)
         }
-        removeLockFile()
     }
 
     // MARK: - Menu editing (tree + ActionDefMap, surfaced as typed rows)

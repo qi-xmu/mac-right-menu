@@ -147,23 +147,30 @@ struct RPCShutdownNotification: Codable {
 
 // MARK: - Line-delimited JSON framing over NWConnection
 
-/// Reads complete newline-terminated JSON lines from an NWConnection.
-/// Calls `handler` for each decoded line, then `onComplete` when the stream ends.
-///
-/// Maintains a cross-receive buffer so that a JSON message split across two TCP
-/// segments is reassembled before being emitted.  Only complete lines (ending
-/// with `\n`) are dispatched; partial data is held until the next receive fills
-/// in the remainder.  On stream end, any leftover bytes (peer sent a final
-/// message without a trailing newline) are flushed as-is.
 private func readLines(from connection: NWConnection,
                         handler: @escaping @Sendable (Data) -> Void,
                         onComplete: @escaping @Sendable () -> Void) {
-    let onComp = onComplete
-    let onHandler = handler
-    let buffer = OSAllocatedUnfairLock(initialState: Data())
+    LineReader(connection: connection, onHandler: handler, onComplete: onComplete).start()
+}
 
-    func receiveNext() {
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { data, _, isComplete, error in
+private final class LineReader: @unchecked Sendable {
+    private let connection: NWConnection
+    private let buffer = OSAllocatedUnfairLock(initialState: Data())
+    private let onHandler: @Sendable (Data) -> Void
+    private let onComplete: @Sendable () -> Void
+
+    init(connection: NWConnection,
+         onHandler: @escaping @Sendable (Data) -> Void,
+         onComplete: @escaping @Sendable () -> Void) {
+        self.connection = connection
+        self.onHandler = onHandler
+        self.onComplete = onComplete
+    }
+
+    func start() { receiveNext() }
+
+    private func receiveNext() {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [self] data, _, isComplete, error in
             buffer.withLock { buf in
                 if let data, !data.isEmpty {
                     buf.append(data)
@@ -175,21 +182,18 @@ private func readLines(from connection: NWConnection,
                 }
                 if let err = error {
                     logger.error("RPCSession: receive error: \(err.localizedDescription, privacy: .public)")
-                    onComp()
+                    onComplete()
                     return
                 }
                 if isComplete {
-                    if !buf.isEmpty {
-                        onHandler(buf)
-                    }
-                    onComp()
+                    if !buf.isEmpty { onHandler(buf) }
+                    onComplete()
                 }
             }
             if error != nil || isComplete { return }
             receiveNext()
         }
     }
-    receiveNext()
 }
 
 private func sendJSON<T: Encodable>(_ value: T, on connection: NWConnection) {
@@ -792,7 +796,8 @@ public final class RPCClient: @unchecked Sendable {
             ?? Bundle.main.bundleURL.deletingPathExtension().lastPathComponent
         let meta: [String: String] = [
             "pid": "\(ProcessInfo.processInfo.processIdentifier)",
-            "version": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown",
+            "version": Constants.version,
+            "build": Constants.build,
             "displayName": extDisplayName
         ]
         let req = RPCRequest(id: id, method: "hello", meta: meta)
@@ -964,17 +969,11 @@ public final class RPCClient: @unchecked Sendable {
         }
     }
 
-    /// Check if the Container process is alive by reading its PID from the lock
-    /// file and sending signal 0 ( existence check only ).
+    /// Check if the Container process is alive.
     private func isContainerProcessAlive() -> Bool {
-        guard let url = Constants.containerLockURL,
-              let data = try? Data(contentsOf: url),
-              let pidStr = String(data: data, encoding: .utf8)?
-                  .trimmingCharacters(in: .whitespacesAndNewlines),
-              let pid = Int32(pidStr)
-        else { return false }
-        // kill -0: check if process exists (no signal sent)
-        return kill(pid, 0) == 0
+        !NSRunningApplication.runningApplications(
+            withBundleIdentifier: Constants.mainAppBundleID
+        ).filter { !$0.isTerminated }.isEmpty
     }
 
     /// Schedule the next `connect()` attempt.
