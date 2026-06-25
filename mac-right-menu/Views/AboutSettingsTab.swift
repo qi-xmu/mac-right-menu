@@ -3,6 +3,8 @@ import SwiftUI
 struct AboutSettingsTab: View {
     @EnvironmentObject var appState: AppState
     @State private var updateMessage: String?
+    @State private var downloadURL: String?
+    @State private var downloadError: String?
 
     private var currentVersion: String {
         "v\(Constants.version) (\(Constants.build))"
@@ -39,23 +41,34 @@ struct AboutSettingsTab: View {
             .padding(.horizontal, 20)
 
             Button {
-                checkForUpdates()
+                if let url = downloadURL {
+                    performDownload(url: url)
+                } else {
+                    checkForUpdates()
+                }
             } label: {
                 HStack(spacing: 6) {
-                    if(appState.isCheckingUpdate){
+                    if appState.isCheckingUpdate || appState.isDownloading {
                         ProgressView()
                             .controlSize(.small)
                     }
-                    
-                    Text(String(localized: appState.isCheckingUpdate ? "Checking..." : "Check for Updates"))
+                    Text(String(localized: appState.isDownloading ? "Downloading..." :
+                        appState.isCheckingUpdate ? "Checking..." :
+                        downloadURL != nil ? "Download & Install" : "Check for Updates"))
                 }
             }
-            .disabled(appState.isCheckingUpdate)
-            VStack{
+            .disabled(appState.isCheckingUpdate || appState.isDownloading)
+
+            VStack {
                 if let msg = updateMessage {
                     Text(msg)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                }
+                if let err = downloadError {
+                    Text(err)
+                        .font(.caption)
+                        .foregroundStyle(.red)
                 }
             }.frame(height: 20)
 
@@ -67,20 +80,31 @@ struct AboutSettingsTab: View {
     private func checkForUpdates() {
         if appState.isCheckingUpdate { return }
         updateMessage = nil
+        downloadURL = nil
+        downloadError = nil
         appState.checkForUpdate { result in
             DispatchQueue.main.async {
                 switch result {
                 case .upToDate:
                     updateMessage = String(localized: "You're up to date!")
-                case .updateAvailable(let latest):
-                    updateMessage = String(localized: "New version \(latest) available!")
+                case .updateAvailable(let latest, let url):
+                    updateMessage = String(localized: "New version v\(latest) available!")
+                    downloadURL = url
                 case .error(let msg):
                     updateMessage = msg
                 }
-                // Clear message after 5s
-                DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
-                    updateMessage = nil
-                }
+            }
+        }
+    }
+
+    private func performDownload(url: String) {
+        downloadError = nil
+        appState.downloadAndInstall(from: url) { error in
+            if let error {
+                downloadError = error
+            } else {
+                downloadURL = nil
+                updateMessage = nil
             }
         }
     }

@@ -993,6 +993,40 @@
         }
       }
     },
+    "Download & Install" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Download & Install"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下载并安装"
+          }
+        }
+      }
+    },
+    "Downloading..." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Downloading..."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下载中..."
+          }
+        }
+      }
+    },
     "e.g. sh" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -1530,6 +1564,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "新版本 %@ 可用！"
+          }
+        }
+      }
+    },
+    "New version v%@ available!" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New version v%@ available!"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新版本 v%@ 可用！"
           }
         }
       }

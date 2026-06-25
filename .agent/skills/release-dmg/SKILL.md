@@ -40,25 +40,29 @@ xcodebuild -scheme "mac-right-menu" -project mac-right-menu.xcodeproj \
 ```bash
 APP_PATH=~/Library/Developer/Xcode/DerivedData/Build/Products/Release/mac-right-menu.app
 DMG_PATH=/tmp/mac-right-menu-VERSION.dmg
+rm -f "$DMG_PATH"
 mkdir -p /tmp/dmg
 cp -R "$APP_PATH" /tmp/dmg/
 ln -s /Applications /tmp/dmg/Applications
 hdiutil create -volname "mac-right-menu" -srcfolder /tmp/dmg -ov -format UDZO "$DMG_PATH"
 rm -rf /tmp/dmg
+ls -lh "$DMG_PATH"
 ```
 
-### 6. 验证并推送
-
-验证版本号一致，然后推送 tag 并创建 GitHub Release：
+### 6. 推送并发布
 
 ```bash
 git tag v{VERSION}
 git push origin main
 git push origin v{VERSION}
-gh release create v{VERSION} "$DMG_PATH" --title "v{VERSION}" --notes "<release notes>"
+gh release create v{VERSION} "$DMG_PATH" --title "v{VERSION}" --notes "<release notes>" --draft=false
 ```
 
+Release notes 只列用户可见的功能变更，最多 3 条。
+
 ### 7. 输出 Release URL
+
+最终输出 Release 链接，如 `https://github.com/qi-xmu/mac-right-menu/releases/tag/v1.0.5`。
 
 ## Implementation Notes
 

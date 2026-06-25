@@ -20,15 +20,25 @@ struct TemplateRow: Identifiable, Equatable {
 
 enum UpdateCheckResult {
     case upToDate
-    case updateAvailable(_ version: String)
+    case updateAvailable(_ version: String, downloadURL: String)
     case error(_ message: String)
 }
 
 private struct GitHubRelease: Codable {
     let tagName: String
+    let assets: [GitHubAsset]
 
     enum CodingKeys: String, CodingKey {
         case tagName = "tag_name"
+        case assets
+    }
+}
+
+private struct GitHubAsset: Codable {
+    let browserDownloadURL: String
+
+    enum CodingKeys: String, CodingKey {
+        case browserDownloadURL = "browser_download_url"
     }
 }
 
@@ -59,6 +69,7 @@ class AppState: ObservableObject {
     private let maxDebugEntries = 100
 
     @Published var isCheckingUpdate = false
+    @Published var isDownloading = false
 
     /// Pending delayed Con→Ext wake. On heartbeat-timeout we don't immediately
     /// `pluginkit -e use`; we schedule it `extWakeDelay` seconds out. If the
@@ -376,7 +387,8 @@ class AppState: ObservableObject {
                 let latest = release.tagName.replacingOccurrences(of: "v", with: "")
                 let current = Constants.version
                 if latest.compare(current, options: .numeric) == .orderedDescending {
-                    result = .updateAvailable(latest)
+                    let dmgURL = release.assets.first?.browserDownloadURL ?? ""
+                    result = .updateAvailable(latest, downloadURL: dmgURL)
                 } else {
                     result = .upToDate
                 }
@@ -386,6 +398,31 @@ class AppState: ObservableObject {
             await MainActor.run {
                 self.isCheckingUpdate = false
                 completion(result)
+            }
+        }
+    }
+
+    func downloadAndInstall(from urlString: String, completion: @escaping @MainActor (String?) -> Void) {
+        guard !isDownloading, let url = URL(string: urlString) else { return }
+        isDownloading = true
+        Task.detached {
+            let msg: String?
+            do {
+                let (data, _) = try await URLSession.shared.data(from: url)
+                let dmgURL = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("mac-right-menu-update.dmg")
+                try data.write(to: dmgURL)
+                await NSWorkspace.shared.open(dmgURL)
+                await MainActor.run {
+                    NSApplication.shared.terminate(nil)
+                }
+                msg = nil
+            } catch {
+                msg = error.localizedDescription
+            }
+            await MainActor.run {
+                self.isDownloading = false
+                completion(msg)
             }
         }
     }
