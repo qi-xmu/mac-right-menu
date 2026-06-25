@@ -59,7 +59,7 @@ class AppState: ObservableObject {
         let server = RPCServer(
             onAction: { [weak self] action in
                 guard let self else {
-                    return RPCResult(success: false, errorDescription: "AppState released")
+                    return RPCResult(success: false, errorDescription: String(localized: "App released"))
                 }
                 return await self.executeAction(action)
             },
@@ -162,6 +162,13 @@ class AppState: ObservableObject {
         // Probe Full Disk Access so the General settings tab shows a real
         // status on first open instead of "not checked".
         checkFullDiskAccess()
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.shutdownExtensions()
+        }
     }
 
     // MARK: - Extension Management
@@ -773,7 +780,7 @@ class AppState: ObservableObject {
         let def: ActionDef? = await MainActor.run { self.appConfig.actions[actionID] }
         guard let def else {
             logger.warning("[Con] executeAction: unknown actionID \(actionID)")
-            let result = RPCResult(success: false, errorDescription: "unknown actionID \(actionID)")
+            let result = RPCResult(success: false, errorDescription: "操作失败: \(actionID)")
             await appendLog(actionName: "unknown(\(actionID))", files: [], result: result, shellCommand: nil, logOnly: false)
             return result
         }
@@ -813,10 +820,24 @@ class AppState: ObservableObject {
             // Reserved (shell); not yet wired in the UI.
             shellCommand = command
             logger.notice("[Con] custom action (unimplemented): \(command, privacy: .public)")
-            result = RPCResult(success: false, errorDescription: "custom action not implemented")
+            result = RPCResult(success: false, errorDescription: String(localized: "Custom command not implemented"))
         }
 
         await appendLog(actionName: actionName, files: effectiveURLs.map(\.path), result: result, shellCommand: shellCommand, logOnly: false)
+        if !result.success {
+            let errorDesc = result.errorDescription ?? "未知错误"
+            let displayName = await MainActor.run { self.menuItemName(for: actionID) }
+            await MainActor.run {
+                let alert = NSAlert()
+                alert.messageText = String(localized: "Execution Failed")
+                alert.informativeText = "\(displayName)\n\(errorDesc)"
+                alert.alertStyle = .warning
+                alert.addButton(withTitle: String(localized: "OK"))
+                DispatchQueue.main.async {
+                    alert.runModal()
+                }
+            }
+        }
         return result
     }
 
@@ -828,6 +849,21 @@ class AppState: ObservableObject {
         case .general(let op):   return op.rawValue
         case .custom:            return "shell"
         }
+    }
+
+    /// Find the display name from the menu tree for a given actionID.
+    /// For leaf items inside a section, returns the section name; otherwise
+    /// returns the matching item's own name.
+    private func menuItemName(for actionID: Int) -> String {
+        for section in appConfig.menu.menus {
+            if !section.subMenus.isEmpty {
+                for leaf in section.subMenus {
+                    if leaf.actionID == actionID { return section.name }
+                }
+            }
+            if section.actionID == actionID { return section.name }
+        }
+        return "actionID \(actionID)"
     }
 
     /// Create a new file from a template. The directory is derived from the
@@ -848,7 +884,7 @@ class AppState: ObservableObject {
         } else if let target = targetURL {
             dirURL = target
         } else {
-            return RPCResult(success: false, errorDescription: "newFile: no target directory")
+            return RPCResult(success: false, errorDescription: String(localized: "Cannot determine target folder"))
         }
 
         let fm = FileManager.default
@@ -857,7 +893,7 @@ class AppState: ObservableObject {
         var counter = 1
         while fm.fileExists(atPath: fileURL.path) {
             guard counter < 1000 else {
-                return RPCResult(success: false, errorDescription: "newFile: too many name collisions for \(baseName)")
+                return RPCResult(success: false, errorDescription: "文件名冲突过多: \(baseName)")
             }
             let name = (baseName as NSString).deletingPathExtension
             let ext = (baseName as NSString).pathExtension
@@ -871,14 +907,14 @@ class AppState: ObservableObject {
             return RPCResult(success: true)
         } catch {
             logger.error("newFile failed: \(error.localizedDescription)")
-            return RPCResult(success: false, errorDescription: "newFile failed: \(error.localizedDescription)")
+            return RPCResult(success: false, errorDescription: error.localizedDescription)
         }
     }
 
     /// Open the given URLs with an application.
     nonisolated private static func performOpenWith(app: AppTarget, urls: [URL]) async -> RPCResult {
         guard !urls.isEmpty else {
-            return RPCResult(success: false, errorDescription: "openWith: nothing to open")
+            return RPCResult(success: false, errorDescription: String(localized: "No files to open"))
         }
         do {
             let config = NSWorkspace.OpenConfiguration()
@@ -888,7 +924,7 @@ class AppState: ObservableObject {
             return RPCResult(success: true)
         } catch {
             logger.error("openWith failed: \(error.localizedDescription)")
-            return RPCResult(success: false, errorDescription: "openWith failed: \(error.localizedDescription)")
+            return RPCResult(success: false, errorDescription: error.localizedDescription)
         }
     }
 
@@ -925,7 +961,7 @@ class AppState: ObservableObject {
                     break
                 }
             }
-            return failed.map { RPCResult(success: false, errorDescription: "toggleHidden failed: \($0)") }
+            return failed.map { RPCResult(success: false, errorDescription: $0) }
                 ?? RPCResult(success: true)
         }
     }
