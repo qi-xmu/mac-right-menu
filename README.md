@@ -1,11 +1,15 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/macOS-26+-blue?logo=apple" alt="macOS 26+" />
-  <img src="https://img.shields.io/badge/Swift-6.3-FA7343?logo=swift&logoColor=white" alt="Swift 6.3" />
+  <img src="https://img.shields.io/badge/macOS-14+-blue?logo=apple" alt="macOS 14+" />
+  <img src="https://img.shields.io/badge/Swift-6.0-FA7343?logo=swift&logoColor=white" alt="Swift 6.0" />
   <img src="https://img.shields.io/badge/License-MIT-green" alt="MIT License" />
   <a href="https://github.com/qi-xmu/mac-right-menu/releases"><img src="https://img.shields.io/github/v/release/qi-xmu/mac-right-menu" alt="Release" /></a>
 </p>
 
-<h1 align="center">mac-right-menu</h1>
+<p align="center">
+  <img src="./icon.png" width="128" height="128" alt="mac-right-menu icon" />
+</p>
+
+<h1 align="center">RightMenu</h1>
 
 <p align="center">
 macOS Finder 右键菜单扩展<br/>
@@ -91,8 +95,8 @@ AppConfig
 
 ## 📋 Requirements
 
-- macOS 26 (Tahoe) 或更高
-- Xcode 26+（Swift 6.3）
+- macOS 14 (Sonoma) 或更高
+- Xcode 16+（Swift 6.0）
 - 需要 **完全磁盘访问** 权限以支持所有路径下的文件操作
 
 ## 🚀 安装 & 运行
@@ -129,7 +133,7 @@ mac-right-menu/
 │   ├── Models/                      # MenuConfig, MenuAction, ActionDef, AppConfig, ExtensionInfo…
 │   ├── Preferences/                 # SharedUserDefaults
 │   ├── Permissions/                 # FullDiskAccess 检测
-│   └── RPC/                         # RPCSession (Server + Client), CommandResult
+│   └── RPC/                         # RPCSession (Server + Client)
 ├── mac-right-menu/                  # Container App
 │   ├── ViewModels/AppState.swift    # 核心状态管理 (MainActor), 持有 ActionDefMap
 │   └── Views/                       # 设置窗口 (NavigationSplitView)

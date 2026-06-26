@@ -37,7 +37,7 @@ struct ExecutionLogView: View {
             if appState.executionLog.isEmpty {
                 ContentUnavailableView(
                     "No Execution Records",
-                    systemImage: "list.bullet.rectangle",
+                    systemImage: "list.clipboard",
                     description: Text("Trigger a menu item in Finder to see results here.")
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

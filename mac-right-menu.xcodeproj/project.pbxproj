@@ -10,6 +10,8 @@
 		0053DA76BCC62F3B21183ACE /* MenuConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FABE9BF0AD03A573DB2C6DF /* MenuConfig.swift */; };
 		0AE957FF3E346F10B10DB94D /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00AF79042FD48FEA0DD8AD91 /* AppConfig.swift */; };
 		0B5469E7DCE4B1A94C499A4B /* RPCSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAB1987AF34FFE7FA5943EF5 /* RPCSession.swift */; };
+		11B821DE2FEE76D100D2ED9D /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 11B821DD2FEE76D100D2ED9D /* AppIcon.icon */; };
+		11B821DF2FEE76D100D2ED9D /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 11B821DD2FEE76D100D2ED9D /* AppIcon.icon */; };
 		1FA1B55404E5A8A4B8F5B0DF /* ExecutionLogEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E11FAF32F404EE1051398B4 /* ExecutionLogEntry.swift */; };
 		1FE6196F4DB6FC244CA584CF /* MenuConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FABE9BF0AD03A573DB2C6DF /* MenuConfig.swift */; };
 		2F9ABC91E5B3462DB89942D5 /* PowerStateObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F5D6999D8F84867B66454D3 /* PowerStateObserver.swift */; };
@@ -86,6 +88,7 @@
 		0F5D6999D8F84867B66454D3 /* PowerStateObserver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PowerStateObserver.swift; sourceTree = "<group>"; };
 		108A6DB428B7D682BFE80908 /* Constants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Constants.swift; sourceTree = "<group>"; };
 		117CD93D5335254BE2E4C974 /* ExtensionInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionInfo.swift; sourceTree = "<group>"; };
+		11B821DD2FEE76D100D2ED9D /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 		1E11FAF32F404EE1051398B4 /* ExecutionLogEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExecutionLogEntry.swift; sourceTree = "<group>"; };
 		255056C34CEA98661DC8EE7A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		2FABE9BF0AD03A573DB2C6DF /* MenuConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuConfig.swift; sourceTree = "<group>"; };
@@ -147,6 +150,7 @@
 				5C69AF07D27DB0A66CB451D4 /* Shared */,
 				34848A1CC07963451814E5DB /* Frameworks */,
 				C88E932ABD266B3527610F69 /* Products */,
+				11B821DD2FEE76D100D2ED9D /* AppIcon.icon */,
 			);
 			sourceTree = "<group>";
 			usesTabs = 0;
@@ -367,6 +371,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				11B821DF2FEE76D100D2ED9D /* AppIcon.icon in Resources */,
 				6B8B9AB7DA9F01452C2B4783 /* Localizable.xcstrings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -375,6 +380,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				11B821DE2FEE76D100D2ED9D /* AppIcon.icon in Resources */,
 				42AC784A6E8DB45CD1D43963 /* Localizable.xcstrings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -544,9 +550,9 @@
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 9H9AXS5ZLL;
 				ENABLE_HARDENED_RUNTIME = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -615,9 +621,9 @@
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 9H9AXS5ZLL;
 				ENABLE_HARDENED_RUNTIME = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -667,6 +673,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_ENTITLEMENTS = "mac-right-menu/mac-right-menu.entitlements";
 				COMBINE_HIDPI_IMAGES = YES;
 				DEAD_CODE_STRIPPING = YES;
@@ -687,6 +694,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_ENTITLEMENTS = "mac-right-menu/mac-right-menu.entitlements";
 				COMBINE_HIDPI_IMAGES = YES;
 				DEAD_CODE_STRIPPING = YES;

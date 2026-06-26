@@ -433,8 +433,10 @@ class AppState: ObservableObject {
                 alert.addButton(withTitle: String(localized: "Download & Install"))
                 alert.addButton(withTitle: String(localized: "Later"))
                 alert.window.level = .floating
-                if alert.runModal() == .alertFirstButtonReturn {
-                    self.downloadAndInstall(from: url) { _ in }
+                DispatchQueue.main.async {
+                    if alert.runModal() == .alertFirstButtonReturn {
+                        self.downloadAndInstall(from: url) { _ in }
+                    }
                 }
                 return
             case .error(let msg):
@@ -444,7 +446,9 @@ class AppState: ObservableObject {
                 alert.addButton(withTitle: String(localized: "OK"))
             }
             alert.window.level = .floating
-            alert.runModal()
+            DispatchQueue.main.async {
+                alert.runModal()
+            }
         }
     }
 

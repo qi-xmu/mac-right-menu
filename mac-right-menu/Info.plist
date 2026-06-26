@@ -5,7 +5,7 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>$(DEVELOPMENT_LANGUAGE)</string>
     <key>CFBundleDisplayName</key>
-    <string>mac-right-menu</string>
+    <string>RightMenu</string>
     <key>CFBundleExecutable</key>
     <string>$(PRODUCT_NAME)</string>
     <key>CFBundleIdentifier</key>

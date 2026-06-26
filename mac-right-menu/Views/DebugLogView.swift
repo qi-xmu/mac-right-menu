@@ -99,7 +99,7 @@ struct DebugLogView: View {
             if appState.debugLog.isEmpty {
                 ContentUnavailableView(
                     "No Debug Records",
-                    systemImage: "ant",
+                    systemImage: "ladybug",
                     description: Text("RPC messages and wake events will appear here.")
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

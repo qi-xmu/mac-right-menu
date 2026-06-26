@@ -16,7 +16,7 @@ struct AboutSettingsTab: View {
                 .resizable()
                 .frame(width: 80, height: 80)
 
-            Text("mac-right-menu")
+            Text("RightMenu")
                 .font(.title)
             Text(currentVersion)
                 .font(.caption)

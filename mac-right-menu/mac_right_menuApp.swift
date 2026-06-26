@@ -55,10 +55,10 @@ struct MacRightMenuApp: App {
 
 
         } label: {
-            Image(systemName: "menubar.dock.rectangle")
+            Image(systemName: "filemenu.and.selection")
         }
 
-        Window("mac-right-menu Settings", id: "settings") {
+        Window(String(localized: "RightMenu Settings"), id: "settings") {
             SettingsView()
                 .environmentObject(appState)
                 .frame(
