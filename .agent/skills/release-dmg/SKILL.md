@@ -26,7 +26,7 @@ argument-hint: [version]
 
 ### 3. 提交变更
 
-如果有未提交的文件，先提交。commit message 包含版本号。
+使用 git-commit skill 提交未提交的文件。
 
 ### 4. 构建 Release
 
@@ -58,7 +58,7 @@ git push origin v{VERSION}
 gh release create v{VERSION} "$DMG_PATH" --title "v{VERSION}" --notes "<release notes>" --draft=false
 ```
 
-Release notes 只列用户可见的功能变更，最多 3 条。
+Release notes 只写当前 commit 的修改内容（基于 `git log -1 --format=%s` 生成），最多 3 条用户可见的功能变更。
 
 ### 7. 输出 Release URL
 

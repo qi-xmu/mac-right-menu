@@ -194,8 +194,24 @@ class AppState: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.shutdownExtensions()
+            guard let self else { return }
+            Task { @MainActor in self.shutdownExtensions() }
         }
+
+        // Reconnect extensions on wake from system sleep
+        PowerStateObserver.shared.onSleep = { [weak self] in
+            logger.notice("[Con] System sleeping")
+            self?.rpcServer.pausePingTimer()
+            self?.appendDebugEntry(.init(category: .lifecycle, method: "sleep", summary: "System sleeping"))
+        }
+        PowerStateObserver.shared.onWake = { [weak self] in
+            logger.notice("[Con] System woke — reconnecting extensions")
+            self?.rpcServer.resumePingTimer()
+            self?.appendDebugEntry(.init(category: .lifecycle, method: "wake", summary: "System woke"))
+            self?.checkExtensionRegistration()
+            self?.autoLaunchExtensions()
+        }
+        _ = PowerStateObserver.shared
     }
 
     // MARK: - Extension Management
@@ -416,6 +432,7 @@ class AppState: ObservableObject {
                 alert.alertStyle = .informational
                 alert.addButton(withTitle: String(localized: "Download & Install"))
                 alert.addButton(withTitle: String(localized: "Later"))
+                alert.window.level = .floating
                 if alert.runModal() == .alertFirstButtonReturn {
                     self.downloadAndInstall(from: url) { _ in }
                 }
@@ -426,6 +443,7 @@ class AppState: ObservableObject {
                 alert.alertStyle = .warning
                 alert.addButton(withTitle: String(localized: "OK"))
             }
+            alert.window.level = .floating
             alert.runModal()
         }
     }
@@ -440,7 +458,7 @@ class AppState: ObservableObject {
                 let dmgURL = FileManager.default.temporaryDirectory
                     .appendingPathComponent("mac-right-menu-update.dmg")
                 try data.write(to: dmgURL)
-                await NSWorkspace.shared.open(dmgURL)
+                NSWorkspace.shared.open(dmgURL)
                 await MainActor.run {
                     NSApplication.shared.terminate(nil)
                 }
@@ -942,6 +960,7 @@ class AppState: ObservableObject {
                 alert.informativeText = "\(displayName)\n\(errorDesc)"
                 alert.alertStyle = .warning
                 alert.addButton(withTitle: String(localized: "OK"))
+                alert.window.level = .floating
                 DispatchQueue.main.async {
                     alert.runModal()
                 }

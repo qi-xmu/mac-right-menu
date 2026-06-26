@@ -305,6 +305,17 @@ public final class RPCServer: @unchecked Sendable {
         timer?.cancel()
     }
 
+    func pausePingTimer() {
+        stopPingTimer()
+    }
+
+    func resumePingTimer() {
+        lock.lock()
+        guard !activeConnections.isEmpty, pingTimer == nil else { lock.unlock(); return }
+        lock.unlock()
+        startPingTimer()
+    }
+
     private func checkConnections() {
         lock.lock()
         let now = Date()
